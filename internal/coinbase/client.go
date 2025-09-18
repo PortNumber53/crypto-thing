@@ -102,45 +102,32 @@ func (c *Client) GetCandlesOnce(ctx context.Context, productID string, start, en
 
 
 func (c *Client) GetProducts(ctx context.Context) ([]Product, error) {
-	var allProducts []Product
 	path := "/api/v3/brokerage/products"
-	limit := 250 // Max limit per Coinbase API docs
-	page := 1
+	q := url.Values{}
+	// The /products endpoint does not support pagination. To get all products,
+	// we must set a limit high enough to retrieve them in a single call.
+	q.Set("limit", "9999")
 
-	for {
-		q := url.Values{}
-		q.Set("limit", strconv.Itoa(limit))
-		q.Set("page", strconv.Itoa(page))
-
-		resp, err := c.do(ctx, http.MethodGet, path, q, "")
-		if err != nil {
-			return nil, err
-		}
-
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			b, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return nil, fmt.Errorf("coinbase http %d: %s", resp.StatusCode, string(b))
-		}
-
-		var payload ListProductsResponse
-		dec := json.NewDecoder(resp.Body)
-		if err := dec.Decode(&payload); err != nil {
-			resp.Body.Close()
-			return nil, fmt.Errorf("decode products: %w", err)
-		}
-		resp.Body.Close()
-
-		allProducts = append(allProducts, payload.Products...)
-
-		// If we receive fewer products than the limit, we're on the last page.
-		if len(payload.Products) < limit {
-			break
-		}
-		page++
+	resp, err := c.do(ctx, http.MethodGet, path, q, "")
+	if err != nil {
+		return nil, err
 	}
 
-	return allProducts, nil
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("coinbase http %d: %s", resp.StatusCode, string(b))
+	}
+
+	var payload ListProductsResponse
+	dec := json.NewDecoder(resp.Body)
+	if err := dec.Decode(&payload); err != nil {
+		resp.Body.Close()
+		return nil, fmt.Errorf("decode products: %w", err)
+	}
+	resp.Body.Close()
+
+	return payload.Products, nil
 }
 
 func (c *Client) ListAccounts(ctx context.Context) ([]Account, error) {
