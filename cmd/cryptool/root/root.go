@@ -1,13 +1,13 @@
 package root
 
 import (
+	"embed"
 	"fmt"
 
 	"github.com/spf13/cobra"
-
-	"cryptool/cmd/cryptool/root/subcmds"
 	"cryptool/internal/config"
 )
+
 
 var (
 	cfgPath      string
@@ -38,12 +38,10 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", "", "path to config.ini (default: ~/.config/crypto-thing/config.ini)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	rootCmd.PersistentFlags().StringVar(&coinbaseCreds, "coinbase-creds", "", "path to coinbase credentials json file")
-
-	// Register subcommands
-	rootCmd.AddCommand(subcmds.NewMigrateCmd())
-	rootCmd.AddCommand(subcmds.NewExchangeCmd())
 }
 
-func Execute() error {
+func Execute(migrationsFS embed.FS) error {
+	rootCmd.AddCommand(NewMigrateCmd(migrationsFS))
+	rootCmd.AddCommand(NewExchangeCmd())
 	return rootCmd.Execute()
 }

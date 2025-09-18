@@ -10,20 +10,17 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-//go:embed migrations/*.sql
-var embeddedMigrations embed.FS
-
 func open(url string) (*sql.DB, error) {
 	return sql.Open("postgres", url)
 }
 
-func Status(ctx context.Context, url string) error {
+func Status(ctx context.Context, url string, migrationsFS embed.FS) error {
 	db, err := open(url)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	goose.SetBaseFS(embeddedMigrations)
+	goose.SetBaseFS(migrationsFS)
 	if err := goose.SetDialect("postgres"); err != nil {
 		return err
 	}
@@ -31,26 +28,26 @@ func Status(ctx context.Context, url string) error {
 	return goose.Status(db, "migrations")
 }
 
-func Up(ctx context.Context, url string) error {
+func Up(ctx context.Context, url string, migrationsFS embed.FS) error {
 	db, err := open(url)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	goose.SetBaseFS(embeddedMigrations)
+	goose.SetBaseFS(migrationsFS)
 	if err := goose.Up(db, "migrations"); err != nil {
 		return err
 	}
 	return nil
 }
 
-func Down(ctx context.Context, url string, steps int) error {
+func Down(ctx context.Context, url string, steps int, migrationsFS embed.FS) error {
 	db, err := open(url)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	goose.SetBaseFS(embeddedMigrations)
+	goose.SetBaseFS(migrationsFS)
 	if steps <= 0 {
 		steps = 1
 	}
@@ -62,13 +59,13 @@ func Down(ctx context.Context, url string, steps int) error {
 	return nil
 }
 
-func Reset(ctx context.Context, url string) error {
+func Reset(ctx context.Context, url string, migrationsFS embed.FS) error {
 	db, err := open(url)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	goose.SetBaseFS(embeddedMigrations)
+	goose.SetBaseFS(migrationsFS)
 	if err := goose.Reset(db, "migrations"); err != nil {
 		return err
 	}
