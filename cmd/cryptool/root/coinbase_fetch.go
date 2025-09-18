@@ -98,6 +98,15 @@ This command intelligently identifies and fills any gaps in the local database. 
 
 			var fetchRecursive func(start, end time.Time) error
 			fetchRecursive = func(start, end time.Time) error {
+				// 0. Before anything, check if we've already marked this exact start time as a persistent gap.
+				fillCount, err := store.GetCandleFillCount(ctx, "coinbase", product, start)
+				if err != nil {
+					return fmt.Errorf("checking fill count for %s: %w", start.Format(time.RFC3339), err)
+				}
+				if fillCount >= 5 {
+					return nil // Skip this gap permanently
+				}
+
 				// 1. Count expected vs. actual candles in the range
 				expectedCandles := int(end.Sub(start).Seconds() / float64(secPerBucket))
 				if expectedCandles == 0 {
@@ -122,6 +131,16 @@ This command intelligently identifies and fills any gaps in the local database. 
 					candles, err := client.GetCandlesOnce(ctx, product, start, end, granularity, maxBuckets)
 					if err != nil {
 						return fmt.Errorf("coinbase candles batch error: %w", err)
+					}
+
+					// If API returns no data for a range we expected data for, mark it as a gap.
+					if len(candles) == 0 {
+						fakeCandle := []coinbase.Candle{{Time: start, Volume: -1}}
+						if _, err := store.InsertCandles(ctx, "coinbase", product, fakeCandle); err != nil {
+							return fmt.Errorf("insert fake candle for %s: %w", start.Format(time.RFC3339), err)
+						}
+						fmt.Printf("         -> marking gap at %s as empty\n", start.Format(time.RFC3339))
+						return nil
 					}
 
 					insertedInBatch, err := store.InsertCandles(ctx, "coinbase", product, candles)

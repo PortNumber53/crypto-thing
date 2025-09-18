@@ -29,10 +29,11 @@ func (s *Store) CountCandlesInRange(ctx context.Context, exchange, product strin
 	defer db.Close()
 
 	var cnt int
+	// We ignore candles with volume=0, as these are our fake candles marking gaps.
 	err = db.QueryRowContext(ctx, `
         SELECT COUNT(*)
         FROM candles
-        WHERE exchange = $1 AND product_id = $2 AND time >= $3 AND time < $4
+        WHERE exchange = $1 AND product_id = $2 AND time >= $3 AND time < $4 AND volume > 0
     `, exchange, product, start, end).Scan(&cnt)
 	if err != nil {
 		return 0, err
@@ -41,6 +42,28 @@ func (s *Store) CountCandlesInRange(ctx context.Context, exchange, product strin
 }
 
 // GetProductNewAt returns the new_at timestamp for a given product.
+func (s *Store) GetCandleFillCount(ctx context.Context, exchange, product string, t time.Time) (int, error) {
+	db, err := sql.Open("postgres", s.url)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+
+	var count int
+	err = db.QueryRowContext(ctx, `
+		SELECT fake_fill_count
+		FROM candles
+		WHERE exchange = $1 AND product_id = $2 AND time = $3
+	`, exchange, product, t).Scan(&count)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, nil // No fake candle exists, so count is 0
+		}
+		return 0, err
+	}
+	return count, nil
+}
+
 func (s *Store) GetProductNewAt(ctx context.Context, exchange, product string) (time.Time, error) {
 	db, err := sql.Open("postgres", s.url)
 	if err != nil {
@@ -180,9 +203,20 @@ func parseFloat(s string) float64 {
 func (s *Store) InsertCandles(ctx context.Context, exchange, product string, candles []coinbase.Candle) (int, error) {
 	db, err := sql.Open("postgres", s.url)
 	if err != nil {
-			return 0, err
-		}
-		defer db.Close()
+		return 0, err
+	}
+	defer db.Close()
+
+	// Handle the special case for a "fake" candle, used to mark gaps.
+	if len(candles) == 1 && candles[0].Volume == -1 {
+		_, err := db.ExecContext(ctx, `
+			INSERT INTO candles (exchange, product_id, time, open, high, low, close, volume, fake_fill_count)
+			VALUES ($1, $2, $3, 0, 0, 0, 0, 0, 1)
+			ON CONFLICT (exchange, product_id, time) DO UPDATE
+			SET fake_fill_count = candles.fake_fill_count + 1
+		`, exchange, product, candles[0].Time)
+		return 0, err // Return 0 rows affected for fake candles
+	}
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
