@@ -37,6 +37,9 @@ All notable changes to this project will be documented in this file.
 ## [0.5.2] - 2025-09-18
 - **Feature**: The `data fetch` command now reports the number of new candles inserted after each batch, providing better feedback on data ingestion.
 
+## [0.8.1] - 2025-09-18
+- **Fix**: Corrected an issue where the `sync-products` command only fetched the first page of results from the Coinbase API, leading to an incomplete list of products in the local database. The command now properly paginates through all results, ensuring all tradeable products are synced.
+
 ## [0.8.0] - 2025-09-18
 - **Feature**: Re-implemented the `data fetch` command with a highly efficient, recursive binary-search strategy. Instead of scanning linearly, the command now quickly identifies large gaps in historical data and fills them with the maximum number of candles per request (350), dramatically reducing the number of API calls and speeding up backfills.
 
