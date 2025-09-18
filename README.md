@@ -2,13 +2,27 @@
 
 `cryptool` is a command-line tool for managing cryptocurrency data, including database migrations and fetching historical data from Coinbase.
 
-## Installation
+## Running the Tool
 
-To build and install the tool, run the following command from the project root:
+You can run the tool directly from the source code using `go run`:
 
 ```bash
-go install ./cmd/cryptool
+go run cryptool.go [command]
 ```
+
+Alternatively, you can build and install the binary to your system's `GOPATH`:
+
+```bash
+go install .
+```
+
+After installation, you can run the tool directly:
+
+```bash
+cryptool [command]
+```
+
+*The examples below use `go run`. If you have installed the tool, you can replace `go run cryptool.go` with `cryptool`.*
 
 ## Configuration
 
@@ -48,31 +62,31 @@ The `migrate` command manages the database schema.
 **Show migration status:**
 
 ```bash
-cryptool migrate status
+go run cryptool.go migrate status
 ```
 
 **Apply all pending migrations:**
 
 ```bash
-cryptool migrate up
+go run cryptool.go migrate up
 ```
 
 **Rollback the last migration:**
 
 ```bash
-cryptool migrate down
+go run cryptool.go migrate down
 ```
 
 **Rollback a specific number of migrations:**
 
 ```bash
-cryptool migrate down --step 2
+go run cryptool.go migrate down --step 2
 ```
 
 **Reset the database (rolls back all migrations, then applies them again):**
 
 ```bash
-cryptool migrate reset
+go run cryptool.go migrate reset
 ```
 
 ### Fetch Coinbase Data
@@ -82,7 +96,7 @@ The `exchange coinbase data fetch` command fetches historical candle data from C
 **Fetch data for a specific product and date range:**
 
 ```bash
-cryptool exchange coinbase data fetch 2023-01-01 2023-01-31 --product BTC-USD
+go run cryptool.go exchange coinbase data fetch 2023-01-01 2023-01-31 --product BTC-USD
 ```
 
 **Arguments:**

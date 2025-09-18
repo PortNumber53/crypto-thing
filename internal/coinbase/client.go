@@ -2,8 +2,9 @@ package coinbase
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/ecdsa"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
@@ -11,14 +12,17 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"math"
+	"math/big"
 	"net/http"
 	"net/url"
-	"strings"
-	"time"
 	"strconv"
-	jwt "github.com/golang-jwt/jwt/v5"
-	"math/rand"
+	"strings"
 	"sync"
+	"time"
+
+	"gopkg.in/go-jose/go-jose.v2"
+	"gopkg.in/go-jose/go-jose.v2/jwt"
 )
 
 const baseURL = "https://api.coinbase.com"
@@ -26,12 +30,14 @@ const baseURL = "https://api.coinbase.com"
 // Client minimal Advanced Trade API client
 
 type Client struct {
-	apiKey     string
-	apiSecret  string
-	passphrase string
-	httpClient *http.Client
+	apiKey        string
+	apiSecret     string
+	passphrase    string
+	httpClient    *http.Client
 	jwtKeyName    string
 	jwtPrivateKey *ecdsa.PrivateKey
+	products      []string
+	verbose       bool
 	// rate limiting and retry
 	rpm         int
 	interval    time.Duration
@@ -95,9 +101,47 @@ func (c *Client) GetCandlesOnce(ctx context.Context, productID string, start, en
     return out, nil
 }
 
+// ListAccounts fetches all accounts for the current user, handling pagination.
+func (c *Client) ListAccounts(ctx context.Context) ([]Account, error) {
+	var allAccounts []Account
+	path := "/api/v3/brokerage/accounts"
+	q := url.Values{}
+	q.Set("limit", "250") // Max limit
+
+	for {
+		resp, err := c.do(ctx, http.MethodGet, path, q, "")
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("coinbase http %d: %s", resp.StatusCode, string(b))
+		}
+
+		var payload ListAccountsResponse
+		dec := json.NewDecoder(resp.Body)
+		if err := dec.Decode(&payload); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("decode accounts: %w", err)
+		}
+		resp.Body.Close()
+
+		allAccounts = append(allAccounts, payload.Accounts...)
+
+		if !payload.HasNext || payload.Cursor == "" {
+			break
+		}
+		q.Set("cursor", payload.Cursor)
+	}
+
+	return allAccounts, nil
+}
+
 // Configure sets rate limiting and retry/backoff settings.
 // rpm <= 0 disables rate limiting. maxRetries defaults to 3 when <= 0. backoffMs defaults to 500 when <= 0.
-func (c *Client) Configure(rpm, maxRetries, backoffMs int) {
+func (c *Client) Configure(rpm, maxRetries, backoffMs int, verbose bool) {
 	if maxRetries <= 0 {
 		maxRetries = 3
 	}
@@ -113,6 +157,7 @@ func (c *Client) Configure(rpm, maxRetries, backoffMs int) {
 	} else {
 		c.interval = 0
 	}
+	c.verbose = verbose
 }
 
 func (c *Client) beforeRequest() {
@@ -156,6 +201,12 @@ func (c *Client) doRequest(req *http.Request) (*http.Response, error) {
 		}
 		// If success or non-retriable
 		if resp.StatusCode < 500 && resp.StatusCode != 429 {
+			if resp.StatusCode == http.StatusUnauthorized && c.verbose {
+				body, _ := io.ReadAll(resp.Body)
+				fmt.Printf("==> Unauthorized Response Body: %s\n", string(body))
+				// We need to reconstruct the body reader since it has been consumed
+				resp.Body = io.NopCloser(strings.NewReader(string(body)))
+			}
 			return resp, nil
 		}
 		// Retriable status codes
@@ -178,10 +229,11 @@ func (c *Client) sleepBackoff(attempt int) {
 	if base <= 0 {
 		base = 500 * time.Millisecond
 	}
-	// Exponential backoff with jitter
-	d := base * time.Duration(1<<attempt)
-	jitter := time.Duration(rand.Int63n(int64(base / 2)))
-	time.Sleep(d + jitter)
+	// Simple exponential backoff with jitter
+	backoff := base * time.Duration(1<<uint(attempt))
+	n, _ := rand.Int(rand.Reader, big.NewInt(int64(base)))
+	jitter := time.Duration(n.Int64())
+	time.Sleep(backoff + jitter)
 }
 
 // doPublic performs a request without any auth headers. Use for public endpoints.
@@ -211,7 +263,7 @@ func NewClient(apiKey, apiSecret, passphrase string) *Client {
 // NewClientWithJWT creates a client that uses JWT bearer tokens.
 // keyName is the COINBASE_API_KEY_NAME (e.g., organizations/.../apiKeys/...).
 // privateKeyPEM is the EC private key in PEM format. It may contain literal \n sequences; they will be converted.
-func NewClientWithJWT(keyName, privateKeyPEM string) (*Client, error) {
+func NewClientWithJWT(keyName, privateKeyPEM string, products []string) (*Client, error) {
 	if privateKeyPEM == "" || keyName == "" {
 		return &Client{httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
 	}
@@ -225,25 +277,52 @@ func NewClientWithJWT(keyName, privateKeyPEM string) (*Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse EC private key: %w", err)
 	}
-	return &Client{jwtKeyName: keyName, jwtPrivateKey: pk, httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
+	return &Client{jwtKeyName: keyName, jwtPrivateKey: pk, products: products, httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
 }
 
-func (c *Client) bearerToken() (string, error) {
+// APIKeyClaims defines the custom claims for Coinbase JWT.
+type APIKeyClaims struct {
+	*jwt.Claims
+	URI string `json:"uri"`
+}
+
+// NonceSource is required by go-jose for generating a nonce.
+var max = big.NewInt(math.MaxInt64)
+
+type nonceSource struct{}
+
+func (n nonceSource) Nonce() (string, error) {
+	r, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return "", err
+	}
+	return r.String(), nil
+}
+
+func (c *Client) bearerToken(method, path string) (string, error) {
 	if c.jwtPrivateKey == nil || c.jwtKeyName == "" {
 		return "", nil
 	}
-	now := time.Now().UTC()
-	claims := jwt.MapClaims{
-		"iss": c.jwtKeyName,
-		"sub": c.jwtKeyName,
-		"aud": baseURL,
-		"iat": now.Unix(),
-		"exp": now.Add(2 * time.Minute).Unix(),
+
+	signer, err := jose.NewSigner(
+		jose.SigningKey{Algorithm: jose.ES256, Key: c.jwtPrivateKey},
+		(&jose.SignerOptions{NonceSource: nonceSource{}}).WithType("JWT").WithHeader("kid", c.jwtKeyName),
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to create signer: %w", err)
 	}
-	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
-	// Set kid header to key name per Coinbase JWT examples
-	token.Header["kid"] = c.jwtKeyName
-	return token.SignedString(c.jwtPrivateKey)
+
+	claims := &APIKeyClaims{
+		Claims: &jwt.Claims{
+			Subject:   c.jwtKeyName,
+			Issuer:    "cdp",
+			NotBefore: jwt.NewNumericDate(time.Now()),
+			Expiry:    jwt.NewNumericDate(time.Now().Add(2 * time.Minute)),
+		},
+		URI: fmt.Sprintf("%s %s%s", method, "api.coinbase.com", path),
+	}
+
+	return jwt.Signed(signer).Claims(claims).CompactSerialize()
 }
 
 func (c *Client) sign(ts, method, path, body string) (string, error) {
@@ -268,7 +347,10 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 		return nil, err
 	}
 	// Prefer JWT if configured
-	if tok, err := c.bearerToken(); err == nil && tok != "" {
+	if tok, err := c.bearerToken(method, path); err == nil && tok != "" {
+		if c.verbose {
+			fmt.Printf("==> JWT: %s\n", tok)
+		}
 		req.Header.Set("Authorization", "Bearer "+tok)
 	} else if c.apiKey != "" && c.apiSecret != "" {
 		ts := fmt.Sprintf("%d", time.Now().Unix())
@@ -285,6 +367,12 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Cache-Control", "no-cache")
+	if c.verbose {
+		fmt.Printf("==> Request Headers:\n")
+		for k, v := range req.Header {
+			fmt.Printf("%s: %s\n", k, strings.Join(v, ", "))
+		}
+	}
 	return c.doRequest(req)
 }
 

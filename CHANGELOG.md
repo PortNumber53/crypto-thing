@@ -17,3 +17,9 @@ All notable changes to this project will be documented in this file.
 
 ## [0.3.0] - 2025-09-17
 - Add comprehensive `README.md` with installation, configuration, and usage instructions.
+
+## [0.4.0] - 2025-09-18
+- **Feature**: Add `exchange coinbase wallet syncdown` command to fetch and display account balances.
+- **Feature**: Add `--coinbase-creds` flag to load API credentials directly from a JSON file.
+- **Feature**: Add persistent `--verbose` (`-v`) flag for detailed debug output.
+- **Fix**: Corrected JWT generation for Coinbase Advanced Trade API to resolve authentication errors.
