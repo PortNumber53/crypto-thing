@@ -29,3 +29,7 @@ All notable changes to this project will be documented in this file.
 - **Feature**: The `data fetch` command now validates product IDs against the Coinbase API before fetching.
 - **Feature**: Restored gap-filling logic to `data fetch`, which now intelligently skips already-downloaded time windows, improving efficiency.
 - **Fix**: Corrected an issue where `data fetch` would stop prematurely if a time window had no trading activity, ensuring the full date range is processed.
+
+## [0.5.1] - 2025-09-18
+- **Fix**: Resolved mixed package names (`root` vs `rootroot`) in `cmd/cryptool/root/` that caused build failures and misleading "missing metadata for import" errors.
+- **Fix**: Removed invalid import of `cryptool/cmd/cryptool/root/subcmds` and referenced local constructors (`NewMigrateCmd`, `NewExchangeCmd`) directly in `cmd/cryptool/root/root.go`.
