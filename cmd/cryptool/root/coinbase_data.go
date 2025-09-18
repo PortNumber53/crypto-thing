@@ -8,5 +8,6 @@ func newCoinbaseDataCmd() *cobra.Command {
 		Short: "Data related commands for Coinbase",
 	}
 	cmd.AddCommand(newCoinbaseDataFetchCmd())
+	cmd.AddCommand(newCoinbaseProductsSyncCmd())
 	return cmd
 }
