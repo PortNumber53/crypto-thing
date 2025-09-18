@@ -96,30 +96,32 @@ This command intelligently identifies and fills any gaps in the local database. 
 			batchCount := 0
 			totalInserted := 0
 
-			gaps, err := store.GetMissingCandleRanges(ctx, "coinbase", product, start, end, secPerBucket)
-			if err != nil {
-				return fmt.Errorf("failed to get missing candle ranges: %w", err)
-			}
+			var fetchRecursive func(start, end time.Time) error
+			fetchRecursive = func(start, end time.Time) error {
+				// 1. Count expected vs. actual candles in the range
+				expectedCandles := int(end.Sub(start).Seconds() / float64(secPerBucket))
+				if expectedCandles == 0 {
+					return nil // Nothing to fetch
+				}
 
-			if len(gaps) == 0 {
-				fmt.Println("No data to fetch. All candles are up to date.")
-				return nil
-			}
+				actualCandles, err := store.CountCandlesInRange(ctx, "coinbase", product, start, end)
+				if err != nil {
+					return fmt.Errorf("failed to count candles in range: %w", err)
+				}
 
-			for _, gap := range gaps {
-				cursor := gap.Start
-				for cursor.Before(gap.End) {
+				missingCandles := expectedCandles - actualCandles
+				if missingCandles <= 0 {
+					return nil // Range is fully populated
+				}
+
+				// 2. If missing candles are within a single API call limit, fetch them
+				if expectedCandles <= int(maxBuckets) {
 					batchCount++
-					windowEnd := cursor.Add(time.Duration(secPerBucket*maxBuckets) * time.Second)
-					if windowEnd.After(gap.End) {
-						windowEnd = gap.End
-					}
+					fmt.Printf("Batch %d: fetching %d missing candles in [%s - %s]\n", batchCount, missingCandles, start.Format(time.RFC3339), end.Format(time.RFC3339))
 
-					fmt.Printf("Batch %d: fetching [%s - %s]\n", batchCount, cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339))
-
-					candles, err := client.GetCandlesOnce(ctx, product, cursor, windowEnd, granularity, maxBuckets)
+					candles, err := client.GetCandlesOnce(ctx, product, start, end, granularity, maxBuckets)
 					if err != nil {
-						return fmt.Errorf("coinbase candles batch error [%s - %s]: %w", cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339), err)
+						return fmt.Errorf("coinbase candles batch error: %w", err)
 					}
 
 					insertedInBatch, err := store.InsertCandles(ctx, "coinbase", product, candles)
@@ -128,9 +130,22 @@ This command intelligently identifies and fills any gaps in the local database. 
 					}
 					fmt.Printf("         -> inserted %d of %d candles\n", insertedInBatch, len(candles))
 					totalInserted += insertedInBatch
-
-					cursor = windowEnd
+					return nil
 				}
+
+				// 3. If too many missing, split the range and recurse
+				mid := start.Add(end.Sub(start) / 2)
+				// Align mid to the granularity bucket
+				mid = mid.Truncate(time.Duration(secPerBucket) * time.Second)
+
+				if err := fetchRecursive(start, mid); err != nil {
+					return err
+				}
+				return fetchRecursive(mid, end)
+			}
+
+			if err := fetchRecursive(start, end); err != nil {
+				return err
 			}
 
 			fmt.Printf("Fetch complete. Inserted %d new candles.\n", totalInserted)
@@ -139,7 +154,7 @@ This command intelligently identifies and fills any gaps in the local database. 
 		},
 	}
 	cmd.Flags().StringVar(&product, "product", "", "product id, e.g. BTC-USD")
-	cmd.Flags().StringVar(&granularity, "granularity", "1h", "granularity (1m,5m,15m,30m,1h,2h,6h,1d)")
+	cmd.Flags().StringVar(&granularity, "granularity", "1h", "candle granularity, e.g., 1m, 5m, 15m, 30m, 1h, 2h, 6h, 1d")
 	return cmd
 }
 
@@ -174,6 +189,6 @@ func granularitySeconds(g string) int64 {
     case "1d":
         return 24 * 60 * 60
     default:
-        return 0
+        return 3600 // 1h
     }
 }
