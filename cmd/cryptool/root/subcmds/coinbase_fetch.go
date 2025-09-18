@@ -48,7 +48,7 @@ func newCoinbaseDataFetchCmd() *cobra.Command {
 			// Prefer JWT auth when configured; else fall back to HMAC headers
 			var client *coinbase.Client
 			if cfg.Coinbase.APIKeyName != "" && cfg.Coinbase.APIPrivateKey != "" {
-				jwtClient, err := coinbase.NewClientWithJWT(cfg.Coinbase.APIKeyName, cfg.Coinbase.APIPrivateKey)
+				jwtClient, err := coinbase.NewClientWithJWT(cfg.Coinbase.APIKeyName, cfg.Coinbase.APIPrivateKey, cfg.App.Products)
 				if err != nil {
 					return fmt.Errorf("jwt client init: %w", err)
 				}
@@ -57,7 +57,7 @@ func newCoinbaseDataFetchCmd() *cobra.Command {
 				client = coinbase.NewClient(cfg.Coinbase.APIKey, cfg.Coinbase.APISecret, cfg.Coinbase.Passphrase)
 			}
 			// Apply rate limiting and retries
-			client.Configure(cfg.Coinbase.RPM, cfg.Coinbase.MaxRetries, cfg.Coinbase.BackoffMS)
+			client.Configure(cfg.Coinbase.RPM, cfg.Coinbase.MaxRetries, cfg.Coinbase.BackoffMS, cfg.App.Verbose)
 			// Use command context to allow CTRL+C to cancel
             ctx := cmd.Context()
             // Batch over 350 buckets per request

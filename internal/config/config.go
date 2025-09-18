@@ -3,6 +3,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"net/url"
@@ -43,10 +44,17 @@ type Config struct {
 	}
 	App struct {
 		Products []string
+		Verbose  bool
 	}
 }
 
-func Load(path string) (*Config, error) {
+// CoinbaseCreds represents the structure of the Coinbase credentials JSON file.
+type CoinbaseCreds struct {
+	Name       string `json:"name"`
+	PrivateKey string `json:"privateKey"`
+}
+
+func Load(path, credsPath string) (*Config, error) {
 	if path == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -89,18 +97,36 @@ func Load(path string) (*Config, error) {
 	c.Coinbase.APIKey = coinbaseSec.Key("api_key").String()
 	c.Coinbase.APISecret = coinbaseSec.Key("api_secret").String()
 	c.Coinbase.Passphrase = coinbaseSec.Key("passphrase").String()
-	c.Coinbase.APIKeyName = coinbaseSec.Key("api_key_name").String()
-	c.Coinbase.APIPrivateKey = coinbaseSec.Key("api_private_key").String()
 	if c.Coinbase.APIKey == "" {
 		def := cfgfile.Section("default")
 		c.Coinbase.APIKey = def.Key("COINBASE_API_KEY").String()
 		c.Coinbase.APISecret = def.Key("COINBASE_API_SECRET").String()
 		c.Coinbase.Passphrase = def.Key("COINBASE_PASSPHRASE").String()
-		if c.Coinbase.APIKeyName == "" {
-			c.Coinbase.APIKeyName = def.Key("COINBASE_API_KEY_NAME").String()
+	}
+
+	// Load credentials from JSON file if provided.
+	// This is the preferred method and will override any other settings.
+	if credsPath != "" {
+		credsData, err := os.ReadFile(credsPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read coinbase credentials file: %w", err)
 		}
+		var creds CoinbaseCreds
+		if err := json.Unmarshal(credsData, &creds); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal coinbase credentials json: %w", err)
+		}
+		c.Coinbase.APIKeyName = creds.Name
+		c.Coinbase.APIPrivateKey = creds.PrivateKey
+	} else {
+		// Fallback to old method if no creds file is provided
+		def := cfgfile.Section("default")
+		c.Coinbase.APIKeyName = def.Key("COINBASE_API_KEY_NAME").String()
+		if c.Coinbase.APIKeyName == "" {
+			c.Coinbase.APIKeyName = def.Key("COINBASE_CLOUD_API_KEY_NAME").String()
+		}
+		c.Coinbase.APIPrivateKey = def.Key("COINBASE_API_PRIVATE_KEY").String()
 		if c.Coinbase.APIPrivateKey == "" {
-			c.Coinbase.APIPrivateKey = def.Key("COINBASE_API_PRIVATE_KEY").String()
+			c.Coinbase.APIPrivateKey = def.Key("COINBASE_CLOUD_API_SECRET").String()
 		}
 	}
 	// Rate limiting and retries (prefer [coinbase], fallback to [default])

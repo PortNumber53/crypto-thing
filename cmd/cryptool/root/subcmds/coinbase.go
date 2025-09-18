@@ -8,5 +8,6 @@ func NewCoinbaseCmd() *cobra.Command {
 		Short: "Coinbase Advanced Trade commands",
 	}
 	cmd.AddCommand(newCoinbaseDataCmd())
+	cmd.AddCommand(newCoinbaseWalletCmd())
 	return cmd
 }
