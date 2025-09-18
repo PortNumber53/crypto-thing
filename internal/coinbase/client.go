@@ -101,7 +101,34 @@ func (c *Client) GetCandlesOnce(ctx context.Context, productID string, start, en
     return out, nil
 }
 
-// ListAccounts fetches all accounts for the current user, handling pagination.
+
+func (c *Client) GetProducts(ctx context.Context) ([]Product, error) {
+	path := "/api/v3/brokerage/market/products"
+	q := url.Values{}
+	q.Set("limit", "250") // Max limit, though there are fewer than 250 products
+
+	resp, err := c.do(ctx, http.MethodGet, path, q, "")
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("coinbase http %d: %s", resp.StatusCode, string(b))
+	}
+
+	var payload ListProductsResponse
+	dec := json.NewDecoder(resp.Body)
+	if err := dec.Decode(&payload); err != nil {
+		resp.Body.Close()
+		return nil, fmt.Errorf("decode products: %w", err)
+	}
+	resp.Body.Close()
+
+	return payload.Products, nil
+}
+
 func (c *Client) ListAccounts(ctx context.Context) ([]Account, error) {
 	var allAccounts []Account
 	path := "/api/v3/brokerage/accounts"
@@ -376,78 +403,6 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	return c.doRequest(req)
 }
 
-// GET /api/v3/brokerage/market/products/{product_id}/candles
-func (c *Client) GetCandles(ctx context.Context, productID string, start, end time.Time, granularity string) ([]Candle, error) {
-    path := fmt.Sprintf("/api/v3/brokerage/market/products/%s/candles", url.PathEscape(productID))
-    secPerBucket := bucketSeconds(granularity)
-    maxBuckets := int64(350)
-    var out []Candle
-    var lastTime time.Time
-    // Iterate over the requested time window in chunks of up to 350 buckets
-    cursor := start.UTC()
-    endUTC := end.UTC()
-    for cursor.Before(endUTC) {
-        // compute sub-window end
-        windowEnd := cursor.Add(time.Duration(secPerBucket*maxBuckets) * time.Second)
-        if windowEnd.After(endUTC) {
-            windowEnd = endUTC
-        }
-        q := url.Values{}
-        q.Set("start", strconv.FormatInt(cursor.Unix(), 10))
-        q.Set("end", strconv.FormatInt(windowEnd.Unix(), 10))
-        q.Set("granularity", mapGranularity(granularity))
-        q.Set("limit", strconv.FormatInt(maxBuckets, 10))
-        // Authenticated request (JWT if configured) as per Coinbase docs
-        resp, err := c.do(ctx, http.MethodGet, path, q, "")
-        if err != nil {
-            return nil, err
-        }
-        if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-            b, _ := io.ReadAll(resp.Body)
-            resp.Body.Close()
-            return nil, fmt.Errorf("coinbase http %d: %s", resp.StatusCode, string(b))
-        }
-        var payload struct {
-            Candles []struct {
-                Start   string  `json:"start"`
-                Low     string  `json:"low"`
-                High    string  `json:"high"`
-                Open    string  `json:"open"`
-                Close   string  `json:"close"`
-                Volume  string  `json:"volume"`
-            } `json:"candles"`
-        }
-        dec := json.NewDecoder(resp.Body)
-        if err := dec.Decode(&payload); err != nil {
-            resp.Body.Close()
-            return nil, fmt.Errorf("decode candles: %w", err)
-        }
-        resp.Body.Close()
-        // Append, parsing start which may be epoch seconds
-        if len(payload.Candles) == 0 {
-            // No more data; break to avoid tight loop
-            break
-        }
-        // The API may return candles in reverse chronological order; process ascending
-        for i := len(payload.Candles) - 1; i >= 0; i-- {
-            cnd := payload.Candles[i]
-            ts := parseStartTime(cnd.Start)
-            if !lastTime.IsZero() && (ts.Equal(lastTime) || ts.Before(lastTime)) {
-                continue
-            }
-            open := parseFloat(cnd.Open)
-            high := parseFloat(cnd.High)
-            low := parseFloat(cnd.Low)
-            closep := parseFloat(cnd.Close)
-            vol := parseFloat(cnd.Volume)
-            out = append(out, Candle{Time: ts, Open: open, High: high, Low: low, Close: closep, Volume: vol})
-            lastTime = ts
-        }
-        // Move cursor forward by the sub-window size
-        cursor = windowEnd
-    }
-    return out, nil
-}
 
 func mapGranularity(g string) string {
     switch strings.ToLower(g) {

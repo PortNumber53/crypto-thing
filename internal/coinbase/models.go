@@ -18,6 +18,20 @@ type ListAccountsResponse struct {
 	Size     int       `json:"size"`
 }
 
+// Product represents a single trading product from the Coinbase API.
+type Product struct {
+	ProductID string `json:"product_id"`
+	BaseName  string `json:"base_name"`
+	QuoteName string `json:"quote_name"`
+	IsDisabled bool `json:"is_disabled"`
+}
+
+// ListProductsResponse is the response from the /market/products endpoint.
+type ListProductsResponse struct {
+	Products    []Product `json:"products"`
+	NumProducts int       `json:"num_products"`
+}
+
 type Account struct {
 	UUID             string  `json:"uuid"`
 	Name             string  `json:"name"`
