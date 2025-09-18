@@ -19,27 +19,38 @@ func newCoinbaseDataFetchCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "fetch <start-date> <end-date>",
+		Use:   "fetch [start-date] [end-date]",
 		Short: "Fetch historical candles from Coinbase",
-		Args: func(cmd *cobra.Command, args []string) error {
-			if len(args) != 2 {
-				return errors.New("requires <start-date> <end-date>")
-			}
-			return nil
-		},
+		Args: cobra.MaximumNArgs(2), 
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.FromContext(cmd.Context())
 			if product == "" {
 				return errors.New("--product is required, e.g. BTC-USD")
 			}
 
-			start, err := parseDate(args[0])
-			if err != nil {
-				return fmt.Errorf("invalid start-date: %w", err)
+			var start, end time.Time
+			var err error
+			store := ingest.NewStore(cfg.Database.URL)
+
+			if len(args) > 0 {
+				start, err = parseDate(args[0])
+				if err != nil {
+					return fmt.Errorf("invalid start-date: %w", err)
+				}
+			} else {
+				start, err = store.GetProductNewAt(cmd.Context(), "coinbase", product)
+				if err != nil {
+					return fmt.Errorf("get product new_at: %w", err)
+				}
 			}
-			end, err := parseDate(args[1])
-			if err != nil {
-				return fmt.Errorf("invalid end-date: %w", err)
+
+			if len(args) > 1 {
+				end, err = parseDate(args[1])
+				if err != nil {
+					return fmt.Errorf("invalid end-date: %w", err)
+				}
+			} else {
+				end = time.Now()
 			}
 			if !end.After(start) {
 				return errors.New("end-date must be after start-date")
@@ -48,7 +59,7 @@ func newCoinbaseDataFetchCmd() *cobra.Command {
 			// Prefer JWT auth when configured; else fall back to HMAC headers
 			var client *coinbase.Client
 			if cfg.Coinbase.APIKeyName != "" && cfg.Coinbase.APIPrivateKey != "" {
-				jwtClient, err := coinbase.NewClientWithJWT(cfg.Coinbase.APIKeyName, cfg.Coinbase.APIPrivateKey, cfg.App.Products)
+				jwtClient, err := coinbase.NewClientWithJWT(cfg.Coinbase.APIKeyName, cfg.Coinbase.APIPrivateKey)
 				if err != nil {
 					return fmt.Errorf("jwt client init: %w", err)
 				}
@@ -75,51 +86,48 @@ func newCoinbaseDataFetchCmd() *cobra.Command {
 				return fmt.Errorf("invalid product ID: %s", product)
 			}
 
-			store := ingest.NewStore(cfg.Database.URL)
-			ctx := cmd.Context()
+						ctx := cmd.Context()
 
 			secPerBucket := granularitySeconds(granularity)
 			maxBuckets := int64(350)
 			batchCount := 0
 			totalInserted := 0
 
-			cursor := start
-			for cursor.Before(end) {
-				batchCount++
-				windowEnd := cursor.Add(time.Duration(secPerBucket*maxBuckets) * time.Second)
-				if windowEnd.After(end) {
-					windowEnd = end
-				}
+			gaps, err := store.GetMissingCandleRanges(ctx, "coinbase", product, start, end, secPerBucket)
+			if err != nil {
+				return fmt.Errorf("failed to get missing candle ranges: %w", err)
+			}
 
-				// Check if this window is already populated
-				count, err := store.CountCandlesInRange(ctx, "coinbase", product, cursor, windowEnd)
-				if err != nil {
-					return fmt.Errorf("count existing candles: %w", err)
-				}
-				expectedCount := windowEnd.Sub(cursor).Seconds() / float64(secPerBucket)
-				if float64(count) >= expectedCount*0.99 {
-					if cfg.App.Verbose {
-						fmt.Printf("Skipping window [%s - %s]: already populated\n", cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339))
+			if len(gaps) == 0 {
+				fmt.Println("No data to fetch. All candles are up to date.")
+				return nil
+			}
+
+			for _, gap := range gaps {
+				cursor := gap.Start
+				for cursor.Before(gap.End) {
+					batchCount++
+					windowEnd := cursor.Add(time.Duration(secPerBucket*maxBuckets) * time.Second)
+					if windowEnd.After(gap.End) {
+						windowEnd = gap.End
 					}
+
+					fmt.Printf("Batch %d: fetching [%s - %s]\n", batchCount, cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339))
+
+					candles, err := client.GetCandlesOnce(ctx, product, cursor, windowEnd, granularity, maxBuckets)
+					if err != nil {
+						return fmt.Errorf("coinbase candles batch error [%s - %s]: %w", cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339), err)
+					}
+
+					insertedInBatch, err := store.InsertCandles(ctx, "coinbase", product, candles)
+					if err != nil {
+						return fmt.Errorf("insert candles: %w", err)
+					}
+					fmt.Printf("         -> inserted %d of %d candles\n", insertedInBatch, len(candles))
+					totalInserted += insertedInBatch
+
 					cursor = windowEnd
-					continue
 				}
-
-				fmt.Printf("Batch %d: fetching [%s - %s]\n", batchCount, cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339))
-
-				candles, err := client.GetCandlesOnce(ctx, product, cursor, windowEnd, granularity, maxBuckets)
-				if err != nil {
-					return fmt.Errorf("coinbase candles batch error [%s - %s]: %w", cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339), err)
-				}
-
-				insertedInBatch, err := store.InsertCandles(ctx, "coinbase", product, candles)
-				if err != nil {
-					return fmt.Errorf("insert candles: %w", err)
-				}
-				fmt.Printf("         -> inserted %d of %d candles\n", insertedInBatch, len(candles))
-				totalInserted += insertedInBatch
-
-				cursor = windowEnd
 			}
 
 			fmt.Printf("Fetch complete. Inserted %d new candles.\n", totalInserted)

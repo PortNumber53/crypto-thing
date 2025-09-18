@@ -40,6 +40,73 @@ func NewStore(url string) *Store {
 	return &Store{url: url}
 }
 
+// GetProductNewAt returns the new_at timestamp for a given product.
+// GetMissingCandleRanges identifies time ranges with missing candles.
+func (s *Store) GetMissingCandleRanges(ctx context.Context, exchange, product string, start, end time.Time, granularitySeconds int64) ([]struct{ Start, End time.Time }, error) {
+	db, err := sql.Open("postgres", s.url)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT time FROM candles
+		WHERE exchange = $1 AND product_id = $2 AND time >= $3 AND time < $4
+		ORDER BY time
+	`, exchange, product, start, end)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var existingCandles []time.Time
+	for rows.Next() {
+		var t time.Time
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		existingCandles = append(existingCandles, t)
+	}
+
+	var gaps []struct{ Start, End time.Time }
+	cursor := start
+	i := 0
+	for cursor.Before(end) {
+		nextExpected := cursor.Add(time.Duration(granularitySeconds) * time.Second)
+		if i < len(existingCandles) && existingCandles[i].Equal(cursor) {
+			i++
+			cursor = nextExpected
+			continue
+		}
+		gaps = append(gaps, struct{ Start, End time.Time }{Start: cursor, End: nextExpected})
+		cursor = nextExpected
+	}
+
+	return gaps, nil
+}
+
+func (s *Store) GetProductNewAt(ctx context.Context, exchange, product string) (time.Time, error) {
+	db, err := sql.Open("postgres", s.url)
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer db.Close()
+
+	var newAt pq.NullTime
+	err = db.QueryRowContext(ctx, `
+		SELECT new_at
+		FROM products
+		WHERE exchange = $1 AND product_id = $2
+	`, exchange, product).Scan(&newAt)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !newAt.Valid {
+		return time.Time{}, fmt.Errorf("product %s not found or new_at is null", product)
+	}
+	return newAt.Time, nil
+}
+
 func (s *Store) UpsertProducts(ctx context.Context, exchange string, products []coinbase.Product) (int, error) {
 	db, err := sql.Open("postgres", s.url)
 	if err != nil {

@@ -37,6 +37,12 @@ All notable changes to this project will be documented in this file.
 ## [0.5.2] - 2025-09-18
 - **Feature**: The `data fetch` command now reports the number of new candles inserted after each batch, providing better feedback on data ingestion.
 
+## [0.7.1] - 2025-09-18
+- **Refactor**: Removed unused `products` key from the application configuration (`config.ini`) and corresponding code to reduce confusion and simplify the setup.
+
+## [0.7.0] - 2025-09-18
+- **Feature**: Implemented a smart gap-filling feature for the `data fetch` command. The `start-date` and `end-date` arguments are now optional, defaulting to the product's creation date and the current time, respectively. The command now intelligently identifies and fills any gaps in the historical data.
+
 ## [0.6.0] - 2025-09-18
 - **Feature**: Added `exchange coinbase data sync-products` command to fetch and store detailed product information from Coinbase.
 - **Feature**: Added a new database migration (`0004_add_product_details_to_products_table.sql`) to expand the `products` table to store the full product data from the Coinbase API.
