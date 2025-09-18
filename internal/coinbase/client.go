@@ -102,30 +102,45 @@ func (c *Client) GetCandlesOnce(ctx context.Context, productID string, start, en
 
 
 func (c *Client) GetProducts(ctx context.Context) ([]Product, error) {
-	path := "/api/v3/brokerage/market/products"
-	q := url.Values{}
-	q.Set("limit", "250") // Max limit, though there are fewer than 250 products
+	var allProducts []Product
+	path := "/api/v3/brokerage/products"
+	limit := 250 // Max limit per Coinbase API docs
+	page := 1
 
-	resp, err := c.do(ctx, http.MethodGet, path, q, "")
-	if err != nil {
-		return nil, err
-	}
+	for {
+		q := url.Values{}
+		q.Set("limit", strconv.Itoa(limit))
+		q.Set("page", strconv.Itoa(page))
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
+		resp, err := c.do(ctx, http.MethodGet, path, q, "")
+		if err != nil {
+			return nil, err
+		}
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			b, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			return nil, fmt.Errorf("coinbase http %d: %s", resp.StatusCode, string(b))
+		}
+
+		var payload ListProductsResponse
+		dec := json.NewDecoder(resp.Body)
+		if err := dec.Decode(&payload); err != nil {
+			resp.Body.Close()
+			return nil, fmt.Errorf("decode products: %w", err)
+		}
 		resp.Body.Close()
-		return nil, fmt.Errorf("coinbase http %d: %s", resp.StatusCode, string(b))
+
+		allProducts = append(allProducts, payload.Products...)
+
+		// If we receive fewer products than the limit, we're on the last page.
+		if len(payload.Products) < limit {
+			break
+		}
+		page++
 	}
 
-	var payload ListProductsResponse
-	dec := json.NewDecoder(resp.Body)
-	if err := dec.Decode(&payload); err != nil {
-		resp.Body.Close()
-		return nil, fmt.Errorf("decode products: %w", err)
-	}
-	resp.Body.Close()
-
-	return payload.Products, nil
+	return allProducts, nil
 }
 
 func (c *Client) ListAccounts(ctx context.Context) ([]Account, error) {
