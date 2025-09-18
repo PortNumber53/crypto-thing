@@ -14,7 +14,8 @@ import (
 func newCoinbaseWalletSyncDownCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "syncdown",
-		Short: "Fetch and display wallet account balances from Coinbase",
+		Short: "Fetch and display account balances from Coinbase",
+		Long:  `Fetches all account balances from the Coinbase Advanced Trade API and displays them in a table.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.FromContext(cmd.Context())
 

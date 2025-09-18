@@ -37,6 +37,9 @@ All notable changes to this project will be documented in this file.
 ## [0.5.2] - 2025-09-18
 - **Feature**: The `data fetch` command now reports the number of new candles inserted after each batch, providing better feedback on data ingestion.
 
+## [0.7.2] - 2025-09-18
+- **Docs**: Improved the help summaries (`--help`) for all commands to be more descriptive and accurately reflect their functionality.
+
 ## [0.7.1] - 2025-09-18
 - **Refactor**: Removed unused `products` key from the application configuration (`config.ini`) and corresponding code to reduce confusion and simplify the setup.
 

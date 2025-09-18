@@ -20,7 +20,10 @@ func newCoinbaseDataFetchCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "fetch [start-date] [end-date]",
-		Short: "Fetch historical candles from Coinbase",
+		Short: "Fetch historical candles, filling any gaps",
+		Long: `Fetches historical candle data from Coinbase for a given product.
+
+This command intelligently identifies and fills any gaps in the local database. If start-date and end-date are omitted, it will backfill all data from the product's launch date to the present.`,
 		Args: cobra.MaximumNArgs(2), 
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.FromContext(cmd.Context())
