@@ -38,16 +38,16 @@ func NewStore(url string) *Store {
 	return &Store{url: url}
 }
 
-func (s *Store) InsertCandles(ctx context.Context, exchange, product string, candles []coinbase.Candle) error {
+func (s *Store) InsertCandles(ctx context.Context, exchange, product string, candles []coinbase.Candle) (int, error) {
 	db, err := sql.Open("postgres", s.url)
 	if err != nil {
-		return err
-	}
-	defer db.Close()
+			return 0, err
+		}
+		defer db.Close()
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO candles(exchange, product_id, time, open, high, low, close, volume)
@@ -55,15 +55,23 @@ func (s *Store) InsertCandles(ctx context.Context, exchange, product string, can
 		ON CONFLICT (exchange, product_id, time) DO NOTHING`)
 	if err != nil {
 		tx.Rollback()
-		return err
+		return 0, err
 	}
 	defer stmt.Close()
 
+	var rowsAffectedCount int64
 	for _, c := range candles {
-		if _, err := stmt.ExecContext(ctx, exchange, product, c.Time, c.Open, c.High, c.Low, c.Close, c.Volume); err != nil {
+		res, err := stmt.ExecContext(ctx, exchange, product, c.Time, c.Open, c.High, c.Low, c.Close, c.Volume)
+		if err != nil {
 			tx.Rollback()
-			return fmt.Errorf("insert candle: %w", err)
+			return 0, fmt.Errorf("insert candle: %w", err)
 		}
+		rows, err := res.RowsAffected()
+		if err != nil {
+			tx.Rollback()
+			return 0, fmt.Errorf("get rows affected: %w", err)
+		}
+		rowsAffectedCount += rows
 	}
-	return tx.Commit()
+	return int(rowsAffectedCount), tx.Commit()
 }

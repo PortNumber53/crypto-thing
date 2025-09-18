@@ -112,10 +112,12 @@ func newCoinbaseDataFetchCmd() *cobra.Command {
 					return fmt.Errorf("coinbase candles batch error [%s - %s]: %w", cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339), err)
 				}
 
-				if err := store.InsertCandles(ctx, "coinbase", product, candles); err != nil {
+				insertedInBatch, err := store.InsertCandles(ctx, "coinbase", product, candles)
+				if err != nil {
 					return fmt.Errorf("insert candles: %w", err)
 				}
-				totalInserted += len(candles)
+				fmt.Printf("         -> inserted %d of %d candles\n", insertedInBatch, len(candles))
+				totalInserted += insertedInBatch
 
 				cursor = windowEnd
 			}
