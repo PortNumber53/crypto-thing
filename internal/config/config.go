@@ -43,8 +43,7 @@ type Config struct {
 		BackoffMS   int
 	}
 	App struct {
-		Products []string
-		Verbose  bool
+		Verbose bool
 	}
 }
 
@@ -162,10 +161,7 @@ func Load(path, credsPath string) (*Config, error) {
 	if c.Coinbase.BackoffMS == 0 {
 		c.Coinbase.BackoffMS = 500
 	}
-	if prods := cfgfile.Section("app").Key("products").String(); prods != "" {
-		c.App.Products = splitAndTrim(prods)
-	}
-	return &c, nil
+		return &c, nil
 }
 
 func splitAndTrim(s string) []string {

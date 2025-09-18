@@ -19,7 +19,7 @@ func newCoinbaseProductsSyncCmd() *cobra.Command {
 
 			var client *coinbase.Client
 			if cfg.Coinbase.APIKeyName != "" && cfg.Coinbase.APIPrivateKey != "" {
-				jwtClient, err := coinbase.NewClientWithJWT(cfg.Coinbase.APIKeyName, cfg.Coinbase.APIPrivateKey, cfg.App.Products)
+				jwtClient, err := coinbase.NewClientWithJWT(cfg.Coinbase.APIKeyName, cfg.Coinbase.APIPrivateKey)
 				if err != nil {
 					return fmt.Errorf("jwt client init: %w", err)
 				}

@@ -36,7 +36,6 @@ type Client struct {
 	httpClient    *http.Client
 	jwtKeyName    string
 	jwtPrivateKey *ecdsa.PrivateKey
-	products      []string
 	verbose       bool
 	// rate limiting and retry
 	rpm         int
@@ -290,7 +289,7 @@ func NewClient(apiKey, apiSecret, passphrase string) *Client {
 // NewClientWithJWT creates a client that uses JWT bearer tokens.
 // keyName is the COINBASE_API_KEY_NAME (e.g., organizations/.../apiKeys/...).
 // privateKeyPEM is the EC private key in PEM format. It may contain literal \n sequences; they will be converted.
-func NewClientWithJWT(keyName, privateKeyPEM string, products []string) (*Client, error) {
+func NewClientWithJWT(keyName, privateKeyPEM string) (*Client, error) {
 	if privateKeyPEM == "" || keyName == "" {
 		return &Client{httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
 	}
@@ -304,7 +303,7 @@ func NewClientWithJWT(keyName, privateKeyPEM string, products []string) (*Client
 	if err != nil {
 		return nil, fmt.Errorf("parse EC private key: %w", err)
 	}
-	return &Client{jwtKeyName: keyName, jwtPrivateKey: pk, products: products, httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
+	return &Client{jwtKeyName: keyName, jwtPrivateKey: pk, httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
 }
 
 // APIKeyClaims defines the custom claims for Coinbase JWT.
