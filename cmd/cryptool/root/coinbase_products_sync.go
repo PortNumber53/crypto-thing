@@ -13,7 +13,8 @@ import (
 func newCoinbaseProductsSyncCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sync-products",
-		Short: "Fetch and store product details from Coinbase",
+		Short: "Sync all tradeable products from Coinbase",
+		Long:  `Fetches all available tradeable products from the Coinbase Advanced Trade API and upserts them into the local database.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.FromContext(cmd.Context())
 
