@@ -37,6 +37,13 @@ All notable changes to this project will be documented in this file.
 ## [0.5.2] - 2025-09-18
 - **Feature**: The `data fetch` command now reports the number of new candles inserted after each batch, providing better feedback on data ingestion.
 
+## [0.8.0] - 2025-09-18
+- **Feature**: Re-implemented the `data fetch` command with a highly efficient, recursive binary-search strategy. Instead of scanning linearly, the command now quickly identifies large gaps in historical data and fills them with the maximum number of candles per request (350), dramatically reducing the number of API calls and speeding up backfills.
+
+## [0.7.3] - 2025-09-18
+- **Fix**: Corrected a bug in the `data fetch` command where the time window for batch requests was calculated incorrectly, causing data to be fetched one candle at a time. The command now correctly fetches large batches (up to 350 candles), significantly improving performance.
+- **Docs**: Improved the help text for the `--granularity` flag to be more descriptive.
+
 ## [0.7.2] - 2025-09-18
 - **Docs**: Improved the help summaries (`--help`) for all commands to be more descriptive and accurately reflect their functionality.
 
