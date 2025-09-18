@@ -23,3 +23,9 @@ All notable changes to this project will be documented in this file.
 - **Feature**: Add `--coinbase-creds` flag to load API credentials directly from a JSON file.
 - **Feature**: Add persistent `--verbose` (`-v`) flag for detailed debug output.
 - **Fix**: Corrected JWT generation for Coinbase Advanced Trade API to resolve authentication errors.
+
+## [0.5.0] - 2025-09-18
+- **Refactor**: Refactored `exchange coinbase data fetch` command for robustness and efficiency.
+- **Feature**: The `data fetch` command now validates product IDs against the Coinbase API before fetching.
+- **Feature**: Restored gap-filling logic to `data fetch`, which now intelligently skips already-downloaded time windows, improving efficiency.
+- **Fix**: Corrected an issue where `data fetch` would stop prematurely if a time window had no trading activity, ensuring the full date range is processed.

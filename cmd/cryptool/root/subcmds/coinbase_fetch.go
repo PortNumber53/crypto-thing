@@ -58,66 +58,73 @@ func newCoinbaseDataFetchCmd() *cobra.Command {
 			}
 			// Apply rate limiting and retries
 			client.Configure(cfg.Coinbase.RPM, cfg.Coinbase.MaxRetries, cfg.Coinbase.BackoffMS, cfg.App.Verbose)
-			// Use command context to allow CTRL+C to cancel
-            ctx := cmd.Context()
-            // Batch over 350 buckets per request
-            secPerBucket := granularitySeconds(granularity)
-            if secPerBucket == 0 {
-                return fmt.Errorf("unsupported granularity: %s", granularity)
-            }
-            maxBuckets := int64(350)
-            batchCount := 0
-            totalInserted := 0
-            store := ingest.NewStore(cfg.Database.URL)
 
-            cursor := start.UTC()
-            endUTC := end.UTC()
-            for cursor.Before(endUTC) {
-                // Respect context cancellation
-                select {
-                case <-ctx.Done():
-                    return ctx.Err()
-                default:
-                }
+			// Validate product ID
+			products, err := client.GetProducts(cmd.Context())
+			if err != nil {
+				return fmt.Errorf("failed to get products for validation: %w", err)
+			}
+			validProduct := false
+			for _, p := range products {
+				if p.ProductID == product {
+					validProduct = true
+					break
+				}
+			}
+			if !validProduct {
+				return fmt.Errorf("invalid product ID: %s", product)
+			}
 
-                windowEnd := cursor.Add(time.Duration(secPerBucket*maxBuckets) * time.Second)
-                if windowEnd.After(endUTC) {
-                    windowEnd = endUTC
-                }
-                // Gap-filling: skip fetch if the window is already fully populated in DB
-                expected := int((windowEnd.Unix() - cursor.Unix()) / secPerBucket)
-                if expected > 0 {
-                    existing, err := store.CountCandlesInRange(ctx, "coinbase", product, cursor, windowEnd)
-                    if err != nil {
-                        return fmt.Errorf("count existing candles error: %w", err)
-                    }
-                    if existing >= expected {
-                        batchCount++
-                        fmt.Printf("[%d] skipped window fully present for %s (%s to %s)\n", batchCount, product, cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339))
-                        cursor = windowEnd
-                        continue
-                    }
-                }
+			store := ingest.NewStore(cfg.Database.URL)
+			ctx := cmd.Context()
 
-                candles, err := client.GetCandlesOnce(ctx, product, cursor, windowEnd, granularity, maxBuckets)
-                if err != nil {
-                    return fmt.Errorf("coinbase candles batch error [%s - %s]: %w", cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339), err)
-                }
-                if len(candles) > 0 {
-                    if err := store.InsertCandles(ctx, "coinbase", product, candles); err != nil {
-                        return fmt.Errorf("store candles error: %w", err)
-                    }
-                    totalInserted += len(candles)
-                }
-                batchCount++
-                fmt.Printf("[%d] inserted %d candles for %s (%s to %s)\n", batchCount, len(candles), product, cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339))
-                cursor = windowEnd
-            }
+			secPerBucket := granularitySeconds(granularity)
+			maxBuckets := int64(350)
+			batchCount := 0
+			totalInserted := 0
 
-            fmt.Printf("Inserted %d candles total for %s\n", totalInserted, product)
-            return nil
-        },
-    }
+			cursor := start
+			for cursor.Before(end) {
+				batchCount++
+				windowEnd := cursor.Add(time.Duration(secPerBucket*maxBuckets) * time.Second)
+				if windowEnd.After(end) {
+					windowEnd = end
+				}
+
+				// Check if this window is already populated
+				count, err := store.CountCandlesInRange(ctx, "coinbase", product, cursor, windowEnd)
+				if err != nil {
+					return fmt.Errorf("count existing candles: %w", err)
+				}
+				expectedCount := windowEnd.Sub(cursor).Seconds() / float64(secPerBucket)
+				if float64(count) >= expectedCount*0.99 {
+					if cfg.App.Verbose {
+						fmt.Printf("Skipping window [%s - %s]: already populated\n", cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339))
+					}
+					cursor = windowEnd
+					continue
+				}
+
+				fmt.Printf("Batch %d: fetching [%s - %s]\n", batchCount, cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339))
+
+				candles, err := client.GetCandlesOnce(ctx, product, cursor, windowEnd, granularity, maxBuckets)
+				if err != nil {
+					return fmt.Errorf("coinbase candles batch error [%s - %s]: %w", cursor.Format(time.RFC3339), windowEnd.Format(time.RFC3339), err)
+				}
+
+				if err := store.InsertCandles(ctx, "coinbase", product, candles); err != nil {
+					return fmt.Errorf("insert candles: %w", err)
+				}
+				totalInserted += len(candles)
+
+				cursor = windowEnd
+			}
+
+			fmt.Printf("Fetch complete. Inserted %d new candles.\n", totalInserted)
+
+			return nil
+		},
+	}
 	cmd.Flags().StringVar(&product, "product", "", "product id, e.g. BTC-USD")
 	cmd.Flags().StringVar(&granularity, "granularity", "1h", "granularity (1m,5m,15m,30m,1h,2h,6h,1d)")
 	return cmd
