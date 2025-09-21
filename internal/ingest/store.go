@@ -20,6 +20,71 @@ func NewStore(url string) *Store {
 	return &Store{url: url}
 }
 
+// CountGapsToFill identifies how many candle-sized gaps exist in a given time range that are still worth filling.
+// It works by: 
+// 1. Generating a series of all expected timestamps in the [start, end) range for the given granularity.
+// 2. LEFT JOINing this series with the `candles` table.
+// 3. Counting the timestamps that are either NOT in the candles table (NULL) or ARE in the table but have a `fake_fill_count` < 5.
+// This gives us the precise number of candles we need to fetch from the API, excluding gaps we've given up on.
+func (s *Store) CountGapsToFill(ctx context.Context, exchange, product string, start, end time.Time, granularitySec int) (int, error) {
+	db, err := sql.Open("postgres", s.url)
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+
+	var cnt int
+	err = db.QueryRowContext(ctx, `
+		WITH expected_times AS (
+			SELECT generate_series($3::timestamptz, $4::timestamptz - interval '1 second', $5::interval) as t
+		)
+		SELECT COUNT(e.t)
+		FROM expected_times e
+		LEFT JOIN candles c ON e.t = c.time AND c.exchange = $1 AND c.product_id = $2
+		WHERE c.time IS NULL OR (c.volume = -1 AND c.fake_fill_count < 5)
+	`, exchange, product, start, end, fmt.Sprintf("%d seconds", granularitySec)).Scan(&cnt)
+
+	if err != nil {
+		return 0, fmt.Errorf("counting gaps to fill: %w", err)
+	}
+	return cnt, nil
+}
+
+// GetMissingCandleTimestamps returns a slice of the exact timestamps that are missing or need to be retried within a given range.
+func (s *Store) GetMissingCandleTimestamps(ctx context.Context, exchange, product string, start, end time.Time, granularitySec int) ([]time.Time, error) {
+	db, err := sql.Open("postgres", s.url)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.QueryContext(ctx, `
+		WITH expected_times AS (
+			SELECT generate_series($3::timestamptz, $4::timestamptz - interval '1 second', $5::interval) as t
+		)
+		SELECT e.t
+		FROM expected_times e
+		LEFT JOIN candles c ON e.t = c.time AND c.exchange = $1 AND c.product_id = $2
+		WHERE c.time IS NULL OR (c.volume = -1 AND c.fake_fill_count < 5)
+	`, exchange, product, start, end, fmt.Sprintf("%d seconds", granularitySec))
+
+	if err != nil {
+		return nil, fmt.Errorf("querying for missing timestamps: %w", err)
+	}
+	defer rows.Close()
+
+	var missing []time.Time
+	for rows.Next() {
+		var t time.Time
+		if err := rows.Scan(&t); err != nil {
+			return nil, fmt.Errorf("scanning missing timestamp: %w", err)
+		}
+		missing = append(missing, t)
+	}
+
+	return missing, rows.Err()
+}
+
 // CountCandlesInRange returns how many candles exist for an exchange/product in [start, end).
 func (s *Store) CountCandlesInRange(ctx context.Context, exchange, product string, start, end time.Time) (int, error) {
 	db, err := sql.Open("postgres", s.url)
@@ -29,11 +94,11 @@ func (s *Store) CountCandlesInRange(ctx context.Context, exchange, product strin
 	defer db.Close()
 
 	var cnt int
-	// We ignore candles with volume=0, as these are our fake candles marking gaps.
+	// We ignore candles with volume < 0, as these are our fake candles marking gaps.
 	err = db.QueryRowContext(ctx, `
         SELECT COUNT(*)
         FROM candles
-        WHERE exchange = $1 AND product_id = $2 AND time >= $3 AND time < $4 AND volume > 0
+        WHERE exchange = $1 AND product_id = $2 AND time >= $3 AND time < $4 AND volume >= 0
     `, exchange, product, start, end).Scan(&cnt)
 	if err != nil {
 		return 0, err
@@ -53,7 +118,7 @@ func (s *Store) GetCandleFillCount(ctx context.Context, exchange, product string
 	err = db.QueryRowContext(ctx, `
 		SELECT fake_fill_count
 		FROM candles
-		WHERE exchange = $1 AND product_id = $2 AND time = $3
+		WHERE exchange = $1 AND product_id = $2 AND time = $3 AND volume = -1
 	`, exchange, product, t).Scan(&count)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -211,9 +276,10 @@ func (s *Store) InsertCandles(ctx context.Context, exchange, product string, can
 	if len(candles) == 1 && candles[0].Volume == -1 {
 		_, err := db.ExecContext(ctx, `
 			INSERT INTO candles (exchange, product_id, time, open, high, low, close, volume, fake_fill_count)
-			VALUES ($1, $2, $3, 0, 0, 0, 0, 0, 1)
+			VALUES ($1, $2, $3, 0, 0, 0, 0, -1, 1)
 			ON CONFLICT (exchange, product_id, time) DO UPDATE
 			SET fake_fill_count = candles.fake_fill_count + 1
+			WHERE candles.volume = -1
 		`, exchange, product, candles[0].Time)
 		return 0, err // Return 0 rows affected for fake candles
 	}

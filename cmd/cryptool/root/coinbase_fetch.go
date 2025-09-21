@@ -3,6 +3,7 @@ package root
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -98,57 +99,75 @@ This command intelligently identifies and fills any gaps in the local database. 
 
 			var fetchRecursive func(start, end time.Time) error
 			fetchRecursive = func(start, end time.Time) error {
-				// 0. Before anything, check if we've already marked this exact start time as a persistent gap.
-				fillCount, err := store.GetCandleFillCount(ctx, "coinbase", product, start)
+				// 1. Count how many gaps in this range are worth filling (i.e. not permanently skipped).
+				// This is much more efficient than counting existing candles and doing math in the app.
+				gapsToFill, err := store.CountGapsToFill(ctx, "coinbase", product, start, end, int(secPerBucket))
 				if err != nil {
-					return fmt.Errorf("checking fill count for %s: %w", start.Format(time.RFC3339), err)
-				}
-				if fillCount >= 5 {
-					return nil // Skip this gap permanently
+					return fmt.Errorf("failed to count gaps to fill in range: %w", err)
 				}
 
-				// 1. Count expected vs. actual candles in the range
-				expectedCandles := int(end.Sub(start).Seconds() / float64(secPerBucket))
-				if expectedCandles == 0 {
-					return nil // Nothing to fetch
+				if gapsToFill == 0 {
+					return nil // Range is fully populated or all gaps are permanent.
 				}
 
-				actualCandles, err := store.CountCandlesInRange(ctx, "coinbase", product, start, end)
-				if err != nil {
-					return fmt.Errorf("failed to count candles in range: %w", err)
-				}
-
-				missingCandles := expectedCandles - actualCandles
-				if missingCandles <= 0 {
-					return nil // Range is fully populated
-				}
-
-				// 2. If missing candles are within a single API call limit, fetch them
-				if expectedCandles <= int(maxBuckets) {
+				// 2. If the time window is small enough, handle it as a single batch.
+				windowSize := int(end.Sub(start).Seconds() / float64(secPerBucket))
+				// The window size must be strictly less than maxBuckets. If it's equal, an inclusive
+				// time range could contain maxBuckets + 1 candles, violating the API limit.
+				if windowSize < int(maxBuckets) {
 					batchCount++
-					fmt.Printf("Batch %d: fetching %d missing candles in [%s - %s]\n", batchCount, missingCandles, start.Format(time.RFC3339), end.Format(time.RFC3339))
+					fmt.Printf("Batch %d: fetching %d potential gaps in [%s - %s]\n", batchCount, gapsToFill, start.Format(time.RFC3339), end.Format(time.RFC3339))
 
-					candles, err := client.GetCandlesOnce(ctx, product, start, end, granularity, maxBuckets)
+					// The Coinbase API's `end` parameter is inclusive. To align with our exclusive `end`,
+					// we subtract one second from the end time.
+					apiEnd := end.Add(-time.Second)
+					candles, err := client.GetCandlesOnce(ctx, product, start, apiEnd, granularity, maxBuckets)
 					if err != nil {
 						return fmt.Errorf("coinbase candles batch error: %w", err)
 					}
 
-					// If API returns no data for a range we expected data for, mark it as a gap.
-					if len(candles) == 0 {
-						fakeCandle := []coinbase.Candle{{Time: start, Volume: -1}}
-						if _, err := store.InsertCandles(ctx, "coinbase", product, fakeCandle); err != nil {
-							return fmt.Errorf("insert fake candle for %s: %w", start.Format(time.RFC3339), err)
-						}
-						fmt.Printf("         -> marking gap at %s as empty\n", start.Format(time.RFC3339))
-						return nil
-					}
-
+					// Insert the candles we received.
 					insertedInBatch, err := store.InsertCandles(ctx, "coinbase", product, candles)
 					if err != nil {
 						return fmt.Errorf("insert candles: %w", err)
 					}
 					fmt.Printf("         -> inserted %d of %d candles\n", insertedInBatch, len(candles))
 					totalInserted += insertedInBatch
+
+					// After inserting, find out which timestamps are still missing and mark them as gaps.
+					// This is the most reliable way to identify true gaps.
+					missingTimestamps, err := store.GetMissingCandleTimestamps(ctx, "coinbase", product, start, end, int(secPerBucket))
+					if err != nil {
+						return fmt.Errorf("failed to get missing timestamps post-fetch: %w", err)
+					}
+
+					// Use a worker pool to mark the remaining gaps concurrently.
+					const numGapWorkers = 10
+					gapJobs := make(chan time.Time, len(missingTimestamps))
+					var gapWg sync.WaitGroup
+
+					for w := 1; w <= numGapWorkers; w++ {
+						gapWg.Add(1)
+						go func() {
+							defer gapWg.Done()
+							for t := range gapJobs {
+								fakeCandle := []coinbase.Candle{{Time: t, Volume: -1}}
+								if _, err := store.InsertCandles(ctx, "coinbase", product, fakeCandle); err != nil {
+									// Log error but don't block other workers
+									fmt.Printf("         -> error marking gap for %s: %v\n", t.Format(time.RFC3339), err)
+									continue
+								}
+								fmt.Printf("         -> marking gap at %s as empty\n", t.Format(time.RFC3339))
+							}
+						}()
+					}
+
+					for _, t := range missingTimestamps {
+						gapJobs <- t
+					}
+					close(gapJobs)
+
+					gapWg.Wait()
 					return nil
 				}
 
