@@ -100,7 +100,7 @@ pipeline {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh """
                         # Create .env file on remote host
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "cat > ${DEPLOY_DIR}/.env << 'EOF'
+                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "cat > ${DEPLOY_DIR}/.env << EOF"
 # Crypto Tool Configuration
 CRYPTO_CONFIG_FILE=${CONFIG_DIR}/crypto.ini
 DAEMON_PORT=40000
@@ -118,7 +118,7 @@ EOF"
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh """
                         # Create systemd service file on remote host
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo tee /etc/systemd/system/crypto-thing.service > /dev/null" << 'EOF'
+                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo tee /etc/systemd/system/crypto-thing.service > /dev/null" << EOF
 [Unit]
 Description=Crypto Thing Tool
 After=network.target
