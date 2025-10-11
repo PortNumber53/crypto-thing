@@ -63,15 +63,15 @@ pipeline {
                         # Set ownership for deployment directory (allow jenkins user to write)
                         ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo chown -R ${DEPLOY_USER}:${DEPLOY_USER} ${DEPLOY_DIR}"
 
-                        # Copy binary to remote host
-                        # Use a simpler approach to avoid Jenkins parsing issues
-                        scp ${BINARY_NAME} ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/${BINARY_NAME}"
+                        # Copy binary to remote host (use Groovy env interpolation to avoid shell ${} in this string)
+                        echo "Deploying binary to: ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/"
+                        scp ${env.BINARY_NAME} ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "chmod +x ${env.DEPLOY_DIR}/${env.BINARY_NAME}"
 
                         # Copy migrations if they exist
                         if [ -d "${WORKSPACE}/migrations" ]; then
                             echo "Copying database migrations..."
-                            scp -r migrations ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
+                            scp -r migrations ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/
                         else
                             echo "Warning: Migrations directory not found in workspace"
                         fi
@@ -79,12 +79,11 @@ pipeline {
                         # Copy service management files if they exist
                         if [ -d "${WORKSPACE}/devops/systemd" ]; then
                             echo "Copying service management files..."
-                            # Use individual components to avoid parsing issues
-                            scp -r devops/systemd ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
+                            scp -r devops/systemd ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/
                             if [ $? -eq 0 ]; then
                                 echo "Setting executable permissions on daemon manager..."
-                                ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/devops/systemd/daemon-manager.sh"
-                                ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod 644 ${DEPLOY_DIR}/devops/systemd/crypto-thing.service"
+                                ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "chmod +x ${env.DEPLOY_DIR}/devops/systemd/daemon-manager.sh"
+                                ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "chmod 644 ${env.DEPLOY_DIR}/devops/systemd/crypto-thing.service"
                                 echo "Service files deployed successfully"
                             else
                                 echo "Warning: Failed to copy service management files"
