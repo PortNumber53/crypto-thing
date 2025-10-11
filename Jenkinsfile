@@ -100,14 +100,17 @@ pipeline {
             steps {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh """
-                        # Create .env file on remote host
-                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "cat > ${env.DEPLOY_DIR}/.env << EOF"
+                        # Create .env locally and copy to remote to avoid SSH heredoc quoting issues
+                        cat > .env.deploy << EOF
 # Crypto Tool Configuration
 CRYPTO_CONFIG_FILE=${env.CONFIG_DIR}/crypto.ini
 DAEMON_PORT=40000
-EOF"
+EOF
 
-                        # Set proper permissions for .env file
+                        scp .env.deploy ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/.env
+                        rm -f .env.deploy
+
+                        # Set proper permissions for .env file on remote host
                         ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "chmod 644 ${env.DEPLOY_DIR}/.env"
                     """
                 }
