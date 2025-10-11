@@ -105,10 +105,10 @@ pipeline {
                         scp devops/.env.deploy ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:/tmp/.env
                         ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo mv /tmp/.env ${env.DEPLOY_DIR}/.env && sudo chown ${env.DEPLOY_USER}:${env.DEPLOY_USER} ${env.DEPLOY_DIR}/.env && sudo chmod 0644 ${env.DEPLOY_DIR}/.env"
 
-                        # Copy crypto.ini from devops to remote config directory
-                        echo "Installing configuration file..."
-                        scp devops/crypto.ini.deploy ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:/tmp/crypto.ini
-                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo mv /tmp/crypto.ini ${env.CONFIG_DIR}/crypto.ini && sudo chown root:root ${env.CONFIG_DIR}/crypto.ini && sudo chmod 0644 ${env.CONFIG_DIR}/crypto.ini"
+                        # Copy crypto.ini from devops to remote config directory (do not overwrite if exists)
+                        echo "Installing configuration file (no-overwrite)..."
+                        scp devops/crypto.ini.deploy ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:/tmp/crypto.ini || true
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "if [ ! -f ${env.CONFIG_DIR}/crypto.ini ]; then sudo mv /tmp/crypto.ini ${env.CONFIG_DIR}/crypto.ini && sudo chown root:root ${env.CONFIG_DIR}/crypto.ini && sudo chmod 0644 ${env.CONFIG_DIR}/crypto.ini; else echo 'Config exists, skipping overwrite'; sudo rm -f /tmp/crypto.ini; fi"
                     """
                 }
             }
