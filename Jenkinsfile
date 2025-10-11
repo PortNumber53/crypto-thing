@@ -80,7 +80,7 @@ pipeline {
                         if [ -d "${WORKSPACE}/devops/systemd" ]; then
                             echo "Copying service management files..."
                             scp -r devops/systemd ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/
-                            if [ $? -eq 0 ]; then
+                            if [ \$? -eq 0 ]; then
                                 echo "Setting executable permissions on daemon manager..."
                                 ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "chmod +x ${env.DEPLOY_DIR}/devops/systemd/daemon-manager.sh"
                                 ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "chmod 644 ${env.DEPLOY_DIR}/devops/systemd/crypto-thing.service"
