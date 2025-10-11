@@ -43,5 +43,34 @@ func init() {
 func Execute(migrationsFS embed.FS) error {
 	rootCmd.AddCommand(NewMigrateCmd(migrationsFS))
 	rootCmd.AddCommand(NewExchangeCmd())
+	rootCmd.AddCommand(NewDaemonCmd())
+	rootCmd.AddCommand(NewClientCmd())
 	return rootCmd.Execute()
+}
+
+// NewDaemonCmd creates the daemon command
+func NewDaemonCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "daemon",
+		Short: "Start the crypto tool as a daemon with websocket interface",
+		Long: `Start the crypto tool as a daemon that exposes a websocket interface
+for other applications to send commands to. The daemon runs continuously and
+accepts commands like migrate:status, coinbase:fetch, etc.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return fmt.Errorf("daemon functionality not yet implemented")
+		},
+	}
+}
+
+// NewClientCmd creates the client command
+func NewClientCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "client",
+		Short: "Connect to crypto daemon via websocket",
+		Long: `Connect to a running crypto daemon via websocket and send commands interactively.
+The daemon must be running for this to work.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return fmt.Errorf("client functionality not yet implemented")
+		},
+	}
 }

@@ -97,6 +97,7 @@ pipeline {
                         ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "cat > ${DEPLOY_DIR}/.env << 'EOF'
 # Crypto Tool Configuration
 CRYPTO_CONFIG_FILE=${CONFIG_DIR}/crypto.ini
+DAEMON_PORT=40000
 EOF"
 
                         # Set proper permissions for .env file
@@ -123,7 +124,7 @@ User=${DEPLOY_USER}
 Group=${DEPLOY_USER}
 WorkingDirectory=${DEPLOY_DIR}
 EnvironmentFile=${DEPLOY_DIR}/.env
-ExecStart=${DEPLOY_DIR}/${BINARY_NAME}
+ExecStart=/opt/crypto-thing/cryptool daemon --port 40000
 Restart=always
 RestartSec=10
 
