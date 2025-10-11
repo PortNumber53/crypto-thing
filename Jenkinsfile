@@ -8,7 +8,7 @@ pipeline {
         CONFIG_DIR = '/etc/crypto-thing'
         BINARY_NAME = 'cryptool'
         GO_VERSION = '1.22'
-        SSH_KEY_ID = 'pinky-deploy-key'  // Jenkins credential ID for SSH key
+        SSH_KEY_ID = 'Jenkins-private-key'  // Jenkins credential ID for SSH key
     }
 
     stages {
