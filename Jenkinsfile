@@ -100,18 +100,15 @@ pipeline {
             steps {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh """
-                        # Create .env locally and copy to remote to avoid SSH heredoc quoting issues
-                        cat > .env.deploy << EOF
-# Crypto Tool Configuration
-CRYPTO_CONFIG_FILE=${env.CONFIG_DIR}/crypto.ini
-DAEMON_PORT=40000
-EOF
+                        # Copy .env from devops to remote and install
+                        echo "Installing environment file..."
+                        scp devops/.env.deploy ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:/tmp/.env
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo mv /tmp/.env ${env.DEPLOY_DIR}/.env && sudo chown ${env.DEPLOY_USER}:${env.DEPLOY_USER} ${env.DEPLOY_DIR}/.env && sudo chmod 0644 ${env.DEPLOY_DIR}/.env"
 
-                        scp .env.deploy ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/.env
-                        rm -f .env.deploy
-
-                        # Set proper permissions for .env file on remote host
-                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "chmod 644 ${env.DEPLOY_DIR}/.env"
+                        # Copy crypto.ini from devops to remote config directory
+                        echo "Installing configuration file..."
+                        scp devops/crypto.ini.deploy ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:/tmp/crypto.ini
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo mv /tmp/crypto.ini ${env.CONFIG_DIR}/crypto.ini && sudo chown root:root ${env.CONFIG_DIR}/crypto.ini && sudo chmod 0644 ${env.CONFIG_DIR}/crypto.ini"
                     """
                 }
             }
