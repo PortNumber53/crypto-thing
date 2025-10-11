@@ -68,8 +68,15 @@ func newCoinbaseHistoryCmd() *cobra.Command {
 			secPerBucket := granularitySeconds(granularity)
 			maxBuckets := int64(350)
 
+			// Capture 'now' once for consistent clamping
+			nowUTC := time.Now().UTC().Truncate(time.Second)
+
 			// Per-product range fetcher reusing existing logic
 			fetchProductRange := func(product string, start, end time.Time) (int, error) {
+				// Never request future data
+				if end.After(nowUTC) {
+					end = nowUTC
+				}
 				totalInserted := 0
 				batchCount := 0
 
@@ -88,7 +95,9 @@ func newCoinbaseHistoryCmd() *cobra.Command {
 						batchCount++
 						fmt.Printf("  [%s] Batch %d: %d potential gaps in [%s - %s]\n", product, batchCount, gapsToFill, start.Format(time.RFC3339), end.Format(time.RFC3339))
 
-						apiEnd := end.Add(-time.Second)
+						apiEnd := end
+						if apiEnd.After(nowUTC) { apiEnd = nowUTC }
+						apiEnd = apiEnd.Add(-time.Second)
 						candles, err := client.GetCandlesOnce(ctx, product, start, apiEnd, granularity, maxBuckets)
 						if err != nil {
 							return fmt.Errorf("coinbase candles batch error: %w", err)
@@ -148,7 +157,14 @@ func newCoinbaseHistoryCmd() *cobra.Command {
 			todayEnd := now.Truncate(24 * time.Hour).Add(24 * time.Hour) // exclusive end-of-today
 			for dayEnd := todayEnd; dayEnd.After(globalMin); dayEnd = dayEnd.AddDate(0, 0, -1) {
 				dayStart := dayEnd.Add(-24 * time.Hour)
-				fmt.Printf("\n=== Day window: [%s - %s) ===\n", dayStart.Format("2006-01-02"), dayEnd.Format("2006-01-02"))
+				// Clamp current day's end to 'now' to avoid future timestamps
+				curEnd := dayEnd
+				if curEnd.After(nowUTC) { curEnd = nowUTC }
+				if dayStart.After(curEnd) {
+					// Entire window would be in the future; skip
+					continue
+				}
+				fmt.Printf("\n=== Day window: [%s - %s) ===\n", dayStart.Format("2006-01-02"), curEnd.Format("2006-01-02"))
 
 				for _, product := range products {
 					pStart, ok := productStarts[product]
@@ -159,7 +175,10 @@ func newCoinbaseHistoryCmd() *cobra.Command {
 						continue // product did not exist yet in this window
 					}
 					effStart := maxTime(pStart, dayStart)
-					inserted, err := fetchProductRange(product, effStart, dayEnd)
+					if !effStart.Before(curEnd) {
+						continue
+					}
+					inserted, err := fetchProductRange(product, effStart, curEnd)
 					if err != nil {
 						fmt.Printf("ERROR for %s in day [%s]: %v\n", product, dayStart.Format("2006-01-02"), err)
 						continue
