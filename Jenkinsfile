@@ -65,16 +65,13 @@ pipeline {
 
                         # Copy binary to remote host
                         # Use a simpler approach to avoid Jenkins parsing issues
-                        DEPLOY_PATH="${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
-                        echo "Deploying binary to: ${DEPLOY_PATH}"
-                        scp ${BINARY_NAME} "${DEPLOY_PATH}"
+                        scp ${BINARY_NAME} ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
                         ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/${BINARY_NAME}"
 
                         # Copy migrations if they exist
                         if [ -d "${WORKSPACE}/migrations" ]; then
                             echo "Copying database migrations..."
-                            MIGRATION_PATH="${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
-                            scp -r migrations "${MIGRATION_PATH}"
+                            scp -r migrations ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
                         else
                             echo "Warning: Migrations directory not found in workspace"
                         fi
@@ -82,8 +79,8 @@ pipeline {
                         # Copy service management files if they exist
                         if [ -d "${WORKSPACE}/devops/systemd" ]; then
                             echo "Copying service management files..."
-                            SERVICE_PATH="${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
-                            scp -r devops/systemd "${SERVICE_PATH}"
+                            # Use individual components to avoid parsing issues
+                            scp -r devops/systemd ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
                             if [ $? -eq 0 ]; then
                                 echo "Setting executable permissions on daemon manager..."
                                 ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/devops/systemd/daemon-manager.sh"
