@@ -41,9 +41,9 @@ pipeline {
             steps {
                 sh """
                     echo "Building crypto tool..."
-                    cd ${WORKSPACE}
+                    cd ${env.WORKSPACE}
                     go mod tidy
-                    go build -o ${BINARY_NAME} .
+                    go build -o ${env.BINARY_NAME} .
                 """
             }
         }
@@ -52,16 +52,16 @@ pipeline {
             steps {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh """
-                        echo "Deploying to ${DEPLOY_HOST}..."
+                        echo "Deploying to ${env.DEPLOY_HOST}..."
 
                         # Test SSH connection
-                        ssh -o StrictHostKeyChecking=no -l ${DEPLOY_USER} ${DEPLOY_HOST} 'echo "SSH connection successful"'
+                        ssh -o StrictHostKeyChecking=no -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} 'echo "SSH connection successful"'
 
                         # Create deployment directories on remote host
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo mkdir -p ${DEPLOY_DIR} ${CONFIG_DIR}"
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo mkdir -p ${env.DEPLOY_DIR} ${env.CONFIG_DIR}"
 
                         # Set ownership for deployment directory (allow jenkins user to write)
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo chown -R ${DEPLOY_USER}:${DEPLOY_USER} ${DEPLOY_DIR}"
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo chown -R ${env.DEPLOY_USER}:${env.DEPLOY_USER} ${env.DEPLOY_DIR}"
 
                         # Copy binary to remote host (use Groovy env interpolation to avoid shell ${} in this string)
                         echo "Deploying binary to: ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/"
@@ -69,7 +69,7 @@ pipeline {
                         ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "chmod +x ${env.DEPLOY_DIR}/${env.BINARY_NAME}"
 
                         # Copy migrations if they exist
-                        if [ -d "${WORKSPACE}/migrations" ]; then
+                        if [ -d "${env.WORKSPACE}/migrations" ]; then
                             echo "Copying database migrations..."
                             scp -r migrations ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/
                         else
@@ -77,7 +77,7 @@ pipeline {
                         fi
 
                         # Copy service management files if they exist
-                        if [ -d "${WORKSPACE}/devops/systemd" ]; then
+                        if [ -d "${env.WORKSPACE}/devops/systemd" ]; then
                             echo "Copying service management files..."
                             scp -r devops/systemd ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/
                             if [ \$? -eq 0 ]; then
@@ -101,14 +101,14 @@ pipeline {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh """
                         # Create .env file on remote host
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "cat > ${DEPLOY_DIR}/.env << EOF"
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "cat > ${env.DEPLOY_DIR}/.env << EOF"
 # Crypto Tool Configuration
-CRYPTO_CONFIG_FILE=${CONFIG_DIR}/crypto.ini
+CRYPTO_CONFIG_FILE=${env.CONFIG_DIR}/crypto.ini
 DAEMON_PORT=40000
 EOF"
 
                         # Set proper permissions for .env file
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod 644 ${DEPLOY_DIR}/.env"
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "chmod 644 ${env.DEPLOY_DIR}/.env"
                     """
                 }
             }
@@ -119,7 +119,7 @@ EOF"
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh """
                         # Create systemd service file on remote host
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo tee /etc/systemd/system/crypto-thing.service > /dev/null" << EOF
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo tee /etc/systemd/system/crypto-thing.service > /dev/null" << EOF
 [Unit]
 Description=Crypto Thing Tool
 After=network.target
@@ -127,13 +127,13 @@ Wants=network.target
 
 [Service]
 Type=simple
-User=${DEPLOY_USER}
-Group=${DEPLOY_USER}
-WorkingDirectory=${DEPLOY_DIR}
-EnvironmentFile=${DEPLOY_DIR}/.env
+User=${env.DEPLOY_USER}
+Group=${env.DEPLOY_USER}
+WorkingDirectory=${env.DEPLOY_DIR}
+EnvironmentFile=${env.DEPLOY_DIR}/.env
 
 # Start the daemon with websocket server
-ExecStart=${DEPLOY_DIR}/${BINARY_NAME} daemon --port 40000
+ExecStart=${env.DEPLOY_DIR}/${env.BINARY_NAME} daemon --port 40000
 
 # Restart policy
 Restart=always
@@ -144,7 +144,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=${DEPLOY_DIR} ${CONFIG_DIR}
+ReadWritePaths=${env.DEPLOY_DIR} ${env.CONFIG_DIR}
 
 # Resource limits
 LimitNOFILE=65536
@@ -160,8 +160,8 @@ WantedBy=multi-user.target
 EOF
 
                         # Reload systemd and set permissions
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo systemctl daemon-reload"
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo chown -R ${DEPLOY_USER}:${DEPLOY_USER} ${DEPLOY_DIR}"
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo systemctl daemon-reload"
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo chown -R ${env.DEPLOY_USER}:${env.DEPLOY_USER} ${env.DEPLOY_DIR}"
                     """
                 }
             }
@@ -171,17 +171,17 @@ EOF
             steps {
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh """
-                        echo "Verifying deployment on ${DEPLOY_HOST}..."
+                        echo "Verifying deployment on ${env.DEPLOY_HOST}..."
 
                         # Check files exist and have correct permissions
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "ls -la ${DEPLOY_DIR}/"
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "ls -la ${env.DEPLOY_DIR}/"
 
                         # Verify service files were copied
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "test -f ${DEPLOY_DIR}/devops/systemd/daemon-manager.sh && echo 'Service manager found' || echo 'Warning: Service manager not found'"
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "test -f /etc/systemd/system/crypto-thing.service && echo 'Systemd service found' || echo 'Warning: Systemd service not found'"
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "test -f ${env.DEPLOY_DIR}/devops/systemd/daemon-manager.sh && echo 'Service manager found' || echo 'Warning: Service manager not found'"
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "test -f /etc/systemd/system/crypto-thing.service && echo 'Systemd service found' || echo 'Warning: Systemd service not found'"
 
                         # Test binary runs (basic smoke test)
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "${DEPLOY_DIR}/${BINARY_NAME} --help"
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "${env.DEPLOY_DIR}/${env.BINARY_NAME} --help"
                     """
                 }
             }
@@ -193,16 +193,16 @@ EOF
             echo 'Deployment to Pinky completed successfully!'
             sshagent(credentials: ["${SSH_KEY_ID}"]) {
                 sh """
-                    echo "Crypto tool deployed to: ${DEPLOY_HOST}:${DEPLOY_DIR}"
-                    echo "Configuration file: ${CONFIG_DIR}/crypto.ini"
-                    echo "Environment file: ${DEPLOY_DIR}/.env"
+                    echo "Crypto tool deployed to: ${env.DEPLOY_HOST}:${env.DEPLOY_DIR}"
+                    echo "Configuration file: ${env.CONFIG_DIR}/crypto.ini"
+                    echo "Environment file: ${env.DEPLOY_DIR}/.env"
                     echo ""
                     echo "Remote commands to manage the service:"
-                    echo "ssh ${DEPLOY_USER}@${DEPLOY_HOST} 'sudo systemctl enable crypto-thing'"
-                    echo "ssh ${DEPLOY_USER}@${DEPLOY_HOST} 'sudo systemctl start crypto-thing'"
-                    echo "ssh ${DEPLOY_USER}@${DEPLOY_HOST} 'sudo systemctl status crypto-thing'"
-                    echo "ssh ${DEPLOY_USER}@${DEPLOY_HOST} 'sudo journalctl -u crypto-thing -f'"
-                    echo "ssh ${DEPLOY_USER}@${DEPLOY_HOST} '${DEPLOY_DIR}/devops/systemd/daemon-manager.sh status'"
+                    echo "ssh ${env.DEPLOY_USER}@${env.DEPLOY_HOST} 'sudo systemctl enable crypto-thing'"
+                    echo "ssh ${env.DEPLOY_USER}@${env.DEPLOY_HOST} 'sudo systemctl start crypto-thing'"
+                    echo "ssh ${env.DEPLOY_USER}@${env.DEPLOY_HOST} 'sudo systemctl status crypto-thing'"
+                    echo "ssh ${env.DEPLOY_USER}@${env.DEPLOY_HOST} 'sudo journalctl -u crypto-thing -f'"
+                    echo "ssh ${env.DEPLOY_USER}@${env.DEPLOY_HOST} '${env.DEPLOY_DIR}/devops/systemd/daemon-manager.sh status'"
                 """
             }
         }
@@ -212,9 +212,9 @@ EOF
             sshagent(credentials: ["${SSH_KEY_ID}"]) {
                 sh """
                     echo "Cleaning up failed deployment on ${DEPLOY_HOST}..."
-                    ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo rm -rf ${DEPLOY_DIR}"
-                    ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo rm -f /etc/systemd/system/crypto-thing.service"
-                    ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo systemctl daemon-reload"
+                    ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo rm -rf ${env.DEPLOY_DIR}"
+                    ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo rm -f /etc/systemd/system/crypto-thing.service"
+                    ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo systemctl daemon-reload"
                 """
             }
         }
@@ -222,7 +222,7 @@ EOF
         cleanup {
             sh """
                 echo "Cleaning up local build artifacts..."
-                rm -f ${BINARY_NAME}
+                rm -f ${env.BINARY_NAME}
             """
         }
     }
