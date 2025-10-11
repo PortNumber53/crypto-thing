@@ -1,9 +1,9 @@
 pipeline {
     agent any
 
-    properties([
-        pipelineTriggers([githubPush()])
-    ])
+    options {
+        githubPush()
+    }
 
     environment {
         DEPLOY_HOST = 'pinky'
