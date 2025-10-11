@@ -74,9 +74,15 @@ pipeline {
 
                         # Copy configuration files if they exist
                         if [ -f "${WORKSPACE}/crypto.ini.deploy" ]; then
-                            scp crypto.ini.deploy ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/crypto.ini
-                            ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo mv /tmp/crypto.ini ${CONFIG_DIR}/crypto.ini"
-                            ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo chmod 644 ${CONFIG_DIR}/crypto.ini"
+                            # Check if crypto.ini already exists on target host
+                            if ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "test -f ${CONFIG_DIR}/crypto.ini"; then
+                                echo "Configuration file ${CONFIG_DIR}/crypto.ini already exists on target host. Skipping deployment configuration."
+                            else
+                                echo "Deploying configuration file to ${CONFIG_DIR}/crypto.ini"
+                                scp crypto.ini.deploy ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/crypto.ini
+                                ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo mv /tmp/crypto.ini ${CONFIG_DIR}/crypto.ini"
+                                ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo chmod 644 ${CONFIG_DIR}/crypto.ini"
+                            fi
                         fi
                     """
                 }
