@@ -286,7 +286,18 @@ func Load(path, credsPath string) (*Config, error) {
 }
 
 // isEnvFile checks if a file appears to be an .env file by examining its content
+// This function should only be used as a fallback when file extension is ambiguous
 func isEnvFile(path string) bool {
+	// First, check file extension as the primary indicator
+	ext := strings.ToLower(filepath.Ext(path))
+	if ext == ".env" {
+		return true
+	}
+	if ext == ".ini" {
+		return false
+	}
+
+	// If extension is ambiguous, use content heuristics
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return false
@@ -316,8 +327,13 @@ func isEnvFile(path string) bool {
 		}
 	}
 
-	// If we have more env-style lines than INI sections, consider it an .env file
-	return envLines > iniSections
+	// If we have INI sections, it's definitely an INI file
+	if iniSections > 0 {
+		return false
+	}
+
+	// If we have env-style lines but no INI sections, consider it an .env file
+	return envLines > 0
 }
 
 func splitAndTrim(s string) []string {
