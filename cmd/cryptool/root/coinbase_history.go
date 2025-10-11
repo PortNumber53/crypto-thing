@@ -43,21 +43,35 @@ func newCoinbaseHistoryCmd() *cobra.Command {
 			// Apply rate limiting and retries
 			client.Configure(cfg.Coinbase.RPM, cfg.Coinbase.MaxRetries, cfg.Coinbase.BackoffMS, cfg.App.Verbose)
 
-			for _, product := range products {
-				fmt.Printf("\n--- Processing product: %s ---\n", product)
+			// Helper to clamp to later of two times
+			maxTime := func(a, b time.Time) time.Time {
+				if a.After(b) { return a }
+				return b
+			}
 
-				start, err := store.GetProductNewAt(ctx, "coinbase", product)
+			// Pre-compute per-product start dates and global earliest product start
+			productStarts := make(map[string]time.Time, len(products))
+			globalMin := time.Now().UTC()
+			for _, p := range products {
+				s, err := store.GetProductNewAt(ctx, "coinbase", p)
 				if err != nil {
-					fmt.Printf("SKIPPING: could not get start date for %s: %v\n", product, err)
+					fmt.Printf("SKIPPING: could not get start date for %s: %v\n", p, err)
 					continue
 				}
-				end := time.Now()
+				productStarts[p] = s
+				if s.Before(globalMin) {
+					globalMin = s
+				}
+			}
 
-				granularity := "1m"
-				secPerBucket := granularitySeconds(granularity)
-				maxBuckets := int64(350)
-				batchCount := 0
+			granularity := "1m"
+			secPerBucket := granularitySeconds(granularity)
+			maxBuckets := int64(350)
+
+			// Per-product range fetcher reusing existing logic
+			fetchProductRange := func(product string, start, end time.Time) (int, error) {
 				totalInserted := 0
+				batchCount := 0
 
 				var fetchRecursive func(start, end time.Time) error
 				fetchRecursive = func(start, end time.Time) error {
@@ -65,15 +79,14 @@ func newCoinbaseHistoryCmd() *cobra.Command {
 					if err != nil {
 						return fmt.Errorf("failed to count gaps to fill in range: %w", err)
 					}
-
 					if gapsToFill == 0 {
-						return nil // Range is fully populated or all gaps are permanent.
+						return nil
 					}
 
 					windowSize := int(end.Sub(start).Seconds() / float64(secPerBucket))
 					if windowSize < int(maxBuckets) {
 						batchCount++
-						fmt.Printf("Batch %d: fetching %d potential gaps in [%s - %s]\n", batchCount, gapsToFill, start.Format(time.RFC3339), end.Format(time.RFC3339))
+						fmt.Printf("  [%s] Batch %d: %d potential gaps in [%s - %s]\n", product, batchCount, gapsToFill, start.Format(time.RFC3339), end.Format(time.RFC3339))
 
 						apiEnd := end.Add(-time.Second)
 						candles, err := client.GetCandlesOnce(ctx, product, start, apiEnd, granularity, maxBuckets)
@@ -111,34 +124,53 @@ func newCoinbaseHistoryCmd() *cobra.Command {
 								}
 							}()
 						}
-
 						for _, t := range missingTimestamps {
 							gapJobs <- t
 						}
 						close(gapJobs)
-
 						gapWg.Wait()
 						return nil
 					}
 
-					mid := start.Add(end.Sub(start) / 2)
-					mid = mid.Truncate(time.Duration(secPerBucket) * time.Second)
-
-					if err := fetchRecursive(start, mid); err != nil {
-						return err
-					}
+					mid := start.Add(end.Sub(start) / 2).Truncate(time.Duration(secPerBucket) * time.Second)
+					if err := fetchRecursive(start, mid); err != nil { return err }
 					return fetchRecursive(mid, end)
 				}
 
 				if err := fetchRecursive(start, end); err != nil {
-					fmt.Printf("ERROR for %s: %v\n", product, err)
-					// Continue to the next product even if one fails.
-				} else {
-					fmt.Printf("Fetch complete for %s. Inserted %d new candles.\n", product, totalInserted)
+					return totalInserted, err
+				}
+				return totalInserted, nil
+			}
+
+			// Day-by-day across products: today back to earliest product start
+			now := time.Now().UTC()
+			todayEnd := now.Truncate(24 * time.Hour).Add(24 * time.Hour) // exclusive end-of-today
+			for dayEnd := todayEnd; dayEnd.After(globalMin); dayEnd = dayEnd.AddDate(0, 0, -1) {
+				dayStart := dayEnd.Add(-24 * time.Hour)
+				fmt.Printf("\n=== Day window: [%s - %s) ===\n", dayStart.Format("2006-01-02"), dayEnd.Format("2006-01-02"))
+
+				for _, product := range products {
+					pStart, ok := productStarts[product]
+					if !ok {
+						continue
+					}
+					if pStart.After(dayEnd) {
+						continue // product did not exist yet in this window
+					}
+					effStart := maxTime(pStart, dayStart)
+					inserted, err := fetchProductRange(product, effStart, dayEnd)
+					if err != nil {
+						fmt.Printf("ERROR for %s in day [%s]: %v\n", product, dayStart.Format("2006-01-02"), err)
+						continue
+					}
+					if inserted > 0 {
+						fmt.Printf("Inserted %d candles for %s in %s\n", inserted, product, dayStart.Format("2006-01-02"))
+					}
 				}
 			}
 
-			fmt.Println("\n--- All products processed ---")
+			fmt.Println("\n--- All day windows processed ---")
 			return nil
 		},
 	}

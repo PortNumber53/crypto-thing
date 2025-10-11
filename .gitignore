@@ -9,7 +9,7 @@
 *.dylib
 
 # Project-specific binaries
-cryptool
+/cryptool
 
 # Test binary, built with `go test -c`
 *.test
@@ -30,8 +30,6 @@ go.work.sum
 # API Keys and Credentials (SECURITY - NEVER COMMIT)
 cdp_api_key.json
 cdp_api_key*.json
-*api*key*.json
-*private*key*.json
 credentials.json
 
 # Editor/IDE
