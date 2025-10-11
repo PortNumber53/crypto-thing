@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    properties([
+        pipelineTriggers([githubPush()])
+    ])
+
     environment {
         DEPLOY_HOST = 'pinky'
         DEPLOY_USER = 'grimlock'  // or your deployment user
