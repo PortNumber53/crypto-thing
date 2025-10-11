@@ -64,13 +64,13 @@ pipeline {
                         ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo chown -R ${DEPLOY_USER}:${DEPLOY_USER} ${DEPLOY_DIR}"
 
                         # Copy binary to remote host
-                        scp ${BINARY_NAME} ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
+                        eval "scp ${BINARY_NAME} ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
                         ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/${BINARY_NAME}"
 
                         # Copy migrations if they exist
                         if [ -d "${WORKSPACE}/migrations" ]; then
                             echo "Copying database migrations..."
-                            scp -r migrations ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
+                            eval "scp -r migrations ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
                         else
                             echo "Warning: Migrations directory not found in workspace"
                         fi
@@ -78,7 +78,8 @@ pipeline {
                         # Copy service management files if they exist
                         if [ -d "${WORKSPACE}/devops/systemd" ]; then
                             echo "Copying service management files..."
-                            scp -r devops/systemd ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
+                            # Use eval to handle the variable substitution properly
+                            eval "scp -r devops/systemd ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
                             if [ $? -eq 0 ]; then
                                 echo "Setting executable permissions on daemon manager..."
                                 ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/devops/systemd/daemon-manager.sh"
