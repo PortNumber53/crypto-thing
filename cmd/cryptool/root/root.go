@@ -2,12 +2,15 @@ package root
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 
 	"github.com/spf13/cobra"
 	"cryptool/internal/config"
 )
-
 
 var (
 	cfgPath      string
@@ -45,6 +48,8 @@ func Execute(migrationsFS embed.FS) error {
 	rootCmd.AddCommand(NewExchangeCmd())
 	rootCmd.AddCommand(NewDaemonCmd())
 	rootCmd.AddCommand(NewClientCmd())
+	rootCmd.AddCommand(NewServerCmd())
+	rootCmd.AddCommand(NewJobsCmd())
 	return rootCmd.Execute()
 }
 
@@ -73,4 +78,62 @@ The daemon must be running for this to work.`,
 			return fmt.Errorf("client functionality not yet implemented")
 		},
 	}
+}
+
+func NewServerCmd() *cobra.Command {
+	serverCmd := &cobra.Command{Use: "server"}
+	statusCmd := &cobra.Command{
+		Use:   "status",
+		Short: "Show daemon status and active jobs",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			port := os.Getenv("DAEMON_PORT")
+			if port == "" { port = "40000" }
+			resp, err := http.Get("http://localhost:" + port + "/status")
+			if err != nil { return fmt.Errorf("request failed: %w", err) }
+			defer resp.Body.Close()
+			b, _ := io.ReadAll(resp.Body)
+			var pretty map[string]interface{}
+			if json.Unmarshal(b, &pretty) == nil {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(pretty)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), string(b))
+			return nil
+		},
+	}
+	serverCmd.AddCommand(statusCmd)
+	return serverCmd
+}
+
+func NewJobsCmd() *cobra.Command {
+	jobsCmd := &cobra.Command{Use: "jobs"}
+	killCmd := &cobra.Command{
+		Use:   "kill <ID>",
+		Short: "Ask daemon to stop processing a job",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+			port := os.Getenv("DAEMON_PORT")
+			if port == "" { port = "40000" }
+			url := fmt.Sprintf("http://localhost:%s/jobs/kill?id=%s", port, id)
+			resp, err := http.Get(url)
+			if err != nil { return fmt.Errorf("request failed: %w", err) }
+			defer resp.Body.Close()
+			b, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode >= 300 {
+				return fmt.Errorf("daemon error: %s", string(b))
+			}
+			var pretty map[string]interface{}
+			if json.Unmarshal(b, &pretty) == nil {
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				return enc.Encode(pretty)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), string(b))
+			return nil
+		},
+	}
+	jobsCmd.AddCommand(killCmd)
+	return jobsCmd
 }

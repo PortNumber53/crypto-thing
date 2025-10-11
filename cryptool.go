@@ -55,6 +55,20 @@ type Daemon struct {
 	ctx         context.Context
 	cancel      context.CancelFunc
 	config      *config.Config
+	// Job tracking
+	jobs      map[string]*Job
+	jobsMutex sync.RWMutex
+}
+
+// Job represents a unit of work tracked by the daemon
+type Job struct {
+	ID        string    `json:"id"`
+	Command   string    `json:"command"`
+	Args      []string  `json:"args,omitempty"`
+	StartedAt time.Time `json:"started_at"`
+	Status    string    `json:"status"` // running, stopping, done, error
+	Error     string    `json:"error,omitempty"`
+	cancel    context.CancelFunc
 }
 
 // NewDaemon creates a new daemon instance
@@ -67,6 +81,7 @@ func NewDaemon(port string, cfg *config.Config) *Daemon {
 		ctx:         ctx,
 		cancel:      cancel,
 		config:      cfg,
+		jobs:        make(map[string]*Job),
 	}
 }
 
@@ -75,6 +90,8 @@ func (d *Daemon) Start() error {
 	// Setup HTTP routes
 	http.HandleFunc("/ws", d.handleWebSocket)
 	http.HandleFunc("/health", d.handleHealth)
+	http.HandleFunc("/status", d.handleStatus)
+	http.HandleFunc("/jobs/kill", d.handleJobsKill)
 
 	// Start command processor
 	go d.processCommands()
@@ -141,6 +158,48 @@ func (d *Daemon) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"status":      "healthy",
 		"timestamp":   time.Now().Format(time.RFC3339),
 		"connections": len(d.connections),
+	})
+}
+
+// handleStatus returns daemon status and active jobs
+func (d *Daemon) handleStatus(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	d.jobsMutex.RLock()
+	jobs := make([]*Job, 0, len(d.jobs))
+	for _, j := range d.jobs {
+		jobs = append(jobs, &Job{ID: j.ID, Command: j.Command, Args: j.Args, StartedAt: j.StartedAt, Status: j.Status, Error: j.Error})
+	}
+	d.jobsMutex.RUnlock()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":      "ok",
+		"timestamp":   time.Now().Format(time.RFC3339),
+		"connections": len(d.connections),
+		"jobs":        jobs,
+	})
+}
+
+// handleJobsKill cancels a job by ID if running
+func (d *Daemon) handleJobsKill(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+	d.jobsMutex.RLock()
+	j, ok := d.jobs[id]
+	d.jobsMutex.RUnlock()
+	if !ok {
+		http.Error(w, "job not found", http.StatusNotFound)
+		return
+	}
+	if j.cancel != nil {
+		j.Status = "stopping"
+		j.cancel()
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status": "stopping",
+		"id":     id,
 	})
 }
 
@@ -270,6 +329,41 @@ func (d *Daemon) executeCommand(cmd Command) Response {
 	}
 
 	switch cmd.Command {
+	case "server:status":
+		// Return lightweight status and jobs list
+		d.jobsMutex.RLock()
+		jobs := make([]*Job, 0, len(d.jobs))
+		for _, j := range d.jobs {
+			jobs = append(jobs, &Job{ID: j.ID, Command: j.Command, Args: j.Args, StartedAt: j.StartedAt, Status: j.Status, Error: j.Error})
+		}
+		d.jobsMutex.RUnlock()
+		response.Message = "Server status"
+		response.Data = map[string]interface{}{
+			"connections": len(d.connections),
+			"jobs":        jobs,
+		}
+
+	case "jobs:kill":
+		id := ""
+		if v, ok := cmd.Data["id"]; ok {
+			if s, ok := v.(string); ok { id = s }
+		}
+		if id == "" {
+			response.Success = false
+			response.Error = "missing job id"
+			break
+		}
+		d.jobsMutex.RLock()
+		j, ok := d.jobs[id]
+		d.jobsMutex.RUnlock()
+		if !ok {
+			response.Success = false
+			response.Error = "job not found"
+			break
+		}
+		if j.cancel != nil { j.Status = "stopping"; j.cancel() }
+		response.Message = fmt.Sprintf("Stopping job %s", id)
+
 	case "migrate:status":
 		response.Message = "Migration status checked"
 		response.Data = map[string]interface{}{
