@@ -136,7 +136,7 @@ WorkingDirectory=${env.DEPLOY_DIR}
 EnvironmentFile=${env.DEPLOY_DIR}/.env
 
 # Start the daemon with websocket server
-ExecStart=${env.DEPLOY_DIR}/${env.BINARY_NAME} daemon --port 40000
+ExecStart=${env.DEPLOY_DIR}/${env.BINARY_NAME} daemon 40000
 
 # Restart policy
 Restart=always
