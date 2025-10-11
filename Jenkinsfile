@@ -64,15 +64,13 @@ pipeline {
                         ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo chown -R ${DEPLOY_USER}:${DEPLOY_USER} ${DEPLOY_DIR}"
 
                         # Copy binary to remote host
-                        BINARY_DEST="${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
-                        scp ${BINARY_NAME} "${BINARY_DEST}"
+                        scp ${BINARY_NAME} $(printf '%s@%s:%s/' "${DEPLOY_USER}" "${DEPLOY_HOST}" "${DEPLOY_DIR}")
                         ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/${BINARY_NAME}"
 
                         # Copy migrations if they exist
                         if [ -d "${WORKSPACE}/migrations" ]; then
                             echo "Copying database migrations..."
-                            MIGRATION_DEST="${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
-                            scp -r migrations "${MIGRATION_DEST}"
+                            scp -r migrations $(printf '%s@%s:%s/' "${DEPLOY_USER}" "${DEPLOY_HOST}" "${DEPLOY_DIR}")
                         else
                             echo "Warning: Migrations directory not found in workspace"
                         fi
@@ -80,9 +78,8 @@ pipeline {
                         # Copy service management files if they exist
                         if [ -d "${WORKSPACE}/devops/systemd" ]; then
                             echo "Copying service management files..."
-                            # Construct the remote path and use it directly
-                            REMOTE_DEST="${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
-                            scp -r devops/systemd "${REMOTE_DEST}"
+                            # Use printf to construct the command safely
+                            scp -r devops/systemd $(printf '%s@%s:%s/' "${DEPLOY_USER}" "${DEPLOY_HOST}" "${DEPLOY_DIR}")
                             if [ $? -eq 0 ]; then
                                 echo "Setting executable permissions on daemon manager..."
                                 ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/devops/systemd/daemon-manager.sh"
