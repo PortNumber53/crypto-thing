@@ -79,7 +79,7 @@ pipeline {
                         # Copy service management files if they exist
                         if [ -d "${env.WORKSPACE}/devops/systemd" ]; then
                             echo "Copying service management files..."
-                            scp -r devops/systemd ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/
+                            scp -r devops ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/
                             if [ \$? -eq 0 ]; then
                                 echo "Setting executable permissions on daemon manager..."
                                 ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "chmod +x ${env.DEPLOY_DIR}/devops/systemd/daemon-manager.sh"
