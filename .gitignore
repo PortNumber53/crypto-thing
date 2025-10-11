@@ -8,6 +8,9 @@
 *.so
 *.dylib
 
+# Project-specific binaries
+cryptool
+
 # Test binary, built with `go test -c`
 *.test
 

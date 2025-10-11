@@ -1,0 +1,27 @@
+[default]
+# Database Connection - Update these values for your deployment
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=crypto_thing
+DB_USER=crypto_user
+DB_PASSWORD=CHANGE_THIS_PASSWORD
+DB_SSLMODE=disable
+DB_MIGRATIONS_DIR=/opt/crypto-thing/migrations
+
+# Coinbase Advanced Trade API Credentials (JWT)
+# Update these with your actual credentials
+COINBASE_CLOUD_API_KEY_NAME="organizations/YOUR_ORG_ID/apiKeys/YOUR_API_KEY_ID"
+COINBASE_CLOUD_API_SECRET="-----BEGIN EC PRIVATE KEY-----\nYOUR_PRIVATE_KEY_HERE\n-----END EC PRIVATE KEY-----\n"
+
+# Rate Limiting (optional)
+COINBASE_RPM=30
+COINBASE_MAX_RETRIES=5
+COINBASE_BACKOFF_MS=1000
+
+# Application settings
+CHROOT_DIR="/opt/crypto-thing/tmp"
+ALLOWED_ORIGINS=http://localhost:3000,https://yourdomain.com
+
+# Optional: Disable context for memory efficiency
+# DISABLE_CONTEXT=1
+# CURRENT_CONTEXT_MAX_ITEMS=50
