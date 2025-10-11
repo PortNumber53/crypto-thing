@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         DEPLOY_HOST = 'pinky'
-        DEPLOY_USER = 'jenkins'  // or your deployment user
+        DEPLOY_USER = 'grimlock'  // or your deployment user
         DEPLOY_DIR = '/opt/crypto-thing'
         CONFIG_DIR = '/etc/crypto-thing'
         BINARY_NAME = 'cryptool'
