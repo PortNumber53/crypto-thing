@@ -27,8 +27,12 @@ profile.cov
 go.work
 go.work.sum
 
-# env file
-.env
+# API Keys and Credentials (SECURITY - NEVER COMMIT)
+cdp_api_key.json
+cdp_api_key*.json
+*api*key*.json
+*private*key*.json
+credentials.json
 
 # Editor/IDE
 # .idea/
