@@ -187,6 +187,18 @@ EOF
 
                         # Test binary runs (basic smoke test)
                         ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "${env.DEPLOY_DIR}/${env.BINARY_NAME} --help"
+
+                        # Verify service is enabled
+                        echo "Checking service enablement..."
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo systemctl is-enabled crypto-thing"
+
+                        # Verify service is active; if not, show status and logs then fail
+                        echo "Checking service active state..."
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo systemctl is-active --quiet crypto-thing || { sudo systemctl status --no-pager crypto-thing; sudo journalctl -u crypto-thing -n 200 --no-pager; exit 1; }"
+
+                        # Wait for health endpoint with retries
+                        echo "Waiting for health endpoint..."
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} 'ok=0; for i in $(seq 1 15); do if curl -fsS http://localhost:40000/health >/dev/null; then ok=1; echo "Health endpoint OK"; break; else echo "Health not ready yet ($i/15)"; sleep 2; fi; done; if [ "$ok" -ne 1 ]; then echo "Health check failed"; sudo systemctl status --no-pager crypto-thing; sudo journalctl -u crypto-thing -n 200 --no-pager; exit 1; fi'
                     """
                 }
             }
