@@ -3,7 +3,7 @@
 # Crypto Thing Daemon Service Management Script
 # Provides easy commands for managing the crypto daemon service
 
-SERVICE_NAME="crypto-thing-daemon"
+SERVICE_NAME="crypto-thing"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
 # Colors for output

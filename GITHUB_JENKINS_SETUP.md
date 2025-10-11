@@ -326,24 +326,24 @@ git push origin feature/new-functionality
 **Install the daemon service**:
 ```bash
 # Copy service file and enable
-sudo cp devops/systemd/crypto-thing-daemon.service /etc/systemd/system/
+sudo cp devops/systemd/crypto-thing.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable crypto-thing-daemon
+sudo systemctl enable crypto-thing
 
 # Start the service
-sudo systemctl start crypto-thing-daemon
+sudo systemctl start crypto-thing
 ```
 
 **Verify daemon operation**:
 ```bash
 # Check service status
-sudo systemctl status crypto-thing-daemon
+sudo systemctl status crypto-thing
 
 # Check health endpoint
 curl http://localhost:40000/health
 
 # View logs
-sudo journalctl -u crypto-thing-daemon -f
+sudo journalctl -u crypto-thing -f
 ```
 
 **Alternative: Use daemon manager script**:

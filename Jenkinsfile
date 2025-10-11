@@ -69,13 +69,26 @@ pipeline {
 
                         # Copy migrations if they exist
                         if [ -d "${WORKSPACE}/migrations" ]; then
+                            echo "Copying database migrations..."
                             scp -r migrations ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
+                        else
+                            echo "Warning: Migrations directory not found in workspace"
                         fi
 
                         # Copy service management files if they exist
                         if [ -d "${WORKSPACE}/devops/systemd" ]; then
+                            echo "Copying service management files..."
                             scp -r devops/systemd ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
-                            ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/devops/systemd/daemon-manager.sh"
+                            if [ $? -eq 0 ]; then
+                                echo "Setting executable permissions on daemon manager..."
+                                ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/devops/systemd/daemon-manager.sh"
+                                ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod 644 ${DEPLOY_DIR}/devops/systemd/crypto-thing.service"
+                                echo "Service files deployed successfully"
+                            else
+                                echo "Warning: Failed to copy service management files"
+                            fi
+                        else
+                            echo "Warning: Service management directory not found in workspace"
                         fi
                     """
                 }
@@ -105,9 +118,9 @@ EOF"
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh """
                         # Create systemd service file on remote host
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo tee /etc/systemd/system/crypto-thing-daemon.service > /dev/null" << 'EOF'
+                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo tee /etc/systemd/system/crypto-thing.service > /dev/null" << 'EOF'
 [Unit]
-Description=Crypto Thing Daemon with WebSocket Interface
+Description=Crypto Thing Tool
 After=network.target
 Wants=network.target
 
@@ -139,7 +152,7 @@ MemoryLimit=512M
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=crypto-daemon
+SyslogIdentifier=crypto-thing
 
 [Install]
 WantedBy=multi-user.target
@@ -161,6 +174,10 @@ EOF
 
                         # Check files exist and have correct permissions
                         ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "ls -la ${DEPLOY_DIR}/"
+
+                        # Verify service files were copied
+                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "test -f ${DEPLOY_DIR}/devops/systemd/daemon-manager.sh && echo 'Service manager found' || echo 'Warning: Service manager not found'"
+                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "test -f /etc/systemd/system/crypto-thing.service && echo 'Systemd service found' || echo 'Warning: Systemd service not found'"
 
                         # Test binary runs (basic smoke test)
                         ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "${DEPLOY_DIR}/${BINARY_NAME} --help"
@@ -184,6 +201,7 @@ EOF
                     echo "ssh ${DEPLOY_USER}@${DEPLOY_HOST} 'sudo systemctl start crypto-thing'"
                     echo "ssh ${DEPLOY_USER}@${DEPLOY_HOST} 'sudo systemctl status crypto-thing'"
                     echo "ssh ${DEPLOY_USER}@${DEPLOY_HOST} 'sudo journalctl -u crypto-thing -f'"
+                    echo "ssh ${DEPLOY_USER}@${DEPLOY_HOST} '${DEPLOY_DIR}/devops/systemd/daemon-manager.sh status'"
                 """
             }
         }
@@ -194,6 +212,8 @@ EOF
                 sh """
                     echo "Cleaning up failed deployment on ${DEPLOY_HOST}..."
                     ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo rm -rf ${DEPLOY_DIR}"
+                    ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo rm -f /etc/systemd/system/crypto-thing.service"
+                    ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo systemctl daemon-reload"
                 """
             }
         }

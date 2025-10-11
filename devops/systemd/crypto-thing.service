@@ -1,5 +1,5 @@
 [Unit]
-Description=Crypto Thing Daemon with WebSocket Interface
+Description=Crypto Thing Tool
 After=network.target
 Wants=network.target
 
@@ -31,7 +31,7 @@ MemoryLimit=512M
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=crypto-daemon
+SyslogIdentifier=crypto-thing
 
 [Install]
 WantedBy=multi-user.target

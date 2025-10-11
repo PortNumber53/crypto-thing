@@ -75,14 +75,14 @@ COINBASE_CLOUD_API_SECRET="-----BEGIN EC PRIVATE KEY-----\nYOUR_PRIVATE_KEY\n---
 **Copy and install the systemd service**:
 ```bash
 # Copy service file to systemd directory
-sudo cp devops/systemd/crypto-thing-daemon.service /etc/systemd/system/
+sudo cp devops/systemd/crypto-thing.service /etc/systemd/system/
 
 # Reload systemd and enable service
 sudo systemctl daemon-reload
-sudo systemctl enable crypto-thing-daemon
+sudo systemctl enable crypto-thing
 
 # Start the service
-sudo systemctl start crypto-thing-daemon
+sudo systemctl start crypto-thing
 ```
 
 **Alternative: Use the daemon manager script**:
@@ -97,7 +97,7 @@ sudo devops/systemd/daemon-manager.sh start
 
 **Check service status**:
 ```bash
-sudo systemctl status crypto-thing-daemon
+sudo systemctl status crypto-thing
 ```
 
 **Check daemon health**:
@@ -108,7 +108,7 @@ curl http://localhost:40000/health
 
 **View service logs**:
 ```bash
-sudo journalctl -u crypto-thing-daemon -f
+sudo journalctl -u crypto-thing -f
 ```
 
 ## 🏗️ Deployment Structure
@@ -125,12 +125,12 @@ Remote deployment structure on `pinky`:
 └── crypto.ini           # Application configuration
 
 /etc/systemd/system/       # Systemd services
-└── crypto-thing-daemon.service  # Daemon service definition
+└── crypto-thing.service  # Daemon service definition
 
 # Project structure (source repository)
 devops/systemd/           # Deployment and service management
 ├── daemon-manager.sh     # Service management script
-└── crypto-thing-daemon.service  # Systemd service template
+└── crypto-thing.service  # Systemd service template
 ```
 
 ## 🔧 Jenkins Pipeline Features
