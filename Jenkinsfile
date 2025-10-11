@@ -63,10 +63,10 @@ pipeline {
                         # Set ownership for deployment directory (allow jenkins user to write)
                         ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo chown -R ${env.DEPLOY_USER}:${env.DEPLOY_USER} ${env.DEPLOY_DIR}"
 
-                        # Copy binary to remote host (use Groovy env interpolation to avoid shell ${} in this string)
+                        # Copy binary to remote host via /tmp, then move with sudo to destination (more robust perms)
                         echo "Deploying binary to: ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/"
-                        scp ${env.BINARY_NAME} ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:${env.DEPLOY_DIR}/
-                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "chmod +x ${env.DEPLOY_DIR}/${env.BINARY_NAME}"
+                        scp ${env.BINARY_NAME} ${env.DEPLOY_USER}@${env.DEPLOY_HOST}:/tmp/${env.BINARY_NAME}
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo mv /tmp/${env.BINARY_NAME} ${env.DEPLOY_DIR}/${env.BINARY_NAME} && sudo chown ${env.DEPLOY_USER}:${env.DEPLOY_USER} ${env.DEPLOY_DIR}/${env.BINARY_NAME} && sudo chmod 0755 ${env.DEPLOY_DIR}/${env.BINARY_NAME}"
 
                         # Copy migrations if they exist
                         if [ -d "${env.WORKSPACE}/migrations" ]; then
