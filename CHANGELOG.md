@@ -2,6 +2,9 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.4] - 2025-09-24
+- **Feature(coinbase):** Added a new `exchange coinbase history` command that iterates through all tradable products and fetches their complete 1-minute candle history. This automates the process of backfilling data for the entire exchange, using the same robust gap-filling logic as the `fetch` command.
+
 ## [0.9.3] - 2025-09-19
 - **Fix(coinbase):** Corrected an off-by-one error in the `data fetch` command that could cause it to request more than the maximum of 350 candles from the Coinbase API. The window-sizing logic is now stricter, ensuring all batch requests respect the API's limit and preventing `INVALID_ARGUMENT` errors.
 

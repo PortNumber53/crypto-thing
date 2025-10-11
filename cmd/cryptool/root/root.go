@@ -35,7 +35,7 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", "", "path to config.ini (default: ~/.config/crypto-thing/config.ini)")
+	rootCmd.PersistentFlags().StringVar(&cfgPath, "config", "", "path to config file (default: reads .env from current directory, then uses CRYPTO_CONFIG_FILE variable)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose output")
 	rootCmd.PersistentFlags().StringVar(&coinbaseCreds, "coinbase-creds", "", "path to coinbase credentials json file")
 }

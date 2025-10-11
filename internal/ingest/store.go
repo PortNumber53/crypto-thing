@@ -151,6 +151,37 @@ func (s *Store) GetProductNewAt(ctx context.Context, exchange, product string) (
 	return newAt.Time, nil
 }
 
+// GetAllProducts retrieves all product IDs for a given exchange.
+func (s *Store) GetAllProducts(ctx context.Context, exchange string) ([]string, error) {
+	db, err := sql.Open("postgres", s.url)
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+
+	rows, err := db.QueryContext(ctx, `
+		SELECT product_id
+		FROM products
+		WHERE exchange = $1 AND is_disabled = false AND trading_disabled = false
+		ORDER BY product_id
+	`, exchange)
+	if err != nil {
+		return nil, fmt.Errorf("querying for products: %w", err)
+	}
+	defer rows.Close()
+
+	var products []string
+	for rows.Next() {
+		var productID string
+		if err := rows.Scan(&productID); err != nil {
+			return nil, fmt.Errorf("scanning product: %w", err)
+		}
+		products = append(products, productID)
+	}
+
+	return products, rows.Err()
+}
+
 func (s *Store) UpsertProducts(ctx context.Context, exchange string, products []coinbase.Product) (int, error) {
 	db, err := sql.Open("postgres", s.url)
 	if err != nil {
