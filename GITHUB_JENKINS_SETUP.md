@@ -321,6 +321,38 @@ git push origin feature/new-functionality
 
 ## 7. 🔍 Monitoring & Troubleshooting
 
+### 4. Configure Systemd Service
+
+**Install the daemon service**:
+```bash
+# Copy service file and enable
+sudo cp devops/systemd/crypto-thing-daemon.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable crypto-thing-daemon
+
+# Start the service
+sudo systemctl start crypto-thing-daemon
+```
+
+**Verify daemon operation**:
+```bash
+# Check service status
+sudo systemctl status crypto-thing-daemon
+
+# Check health endpoint
+curl http://localhost:40000/health
+
+# View logs
+sudo journalctl -u crypto-thing-daemon -f
+```
+
+**Alternative: Use daemon manager script**:
+```bash
+chmod +x devops/systemd/daemon-manager.sh
+sudo devops/systemd/daemon-manager.sh install
+sudo devops/systemd/daemon-manager.sh start
+```
+
 ### Check Deployment Status
 ```bash
 # On Jenkins
@@ -334,7 +366,7 @@ sudo journalctl -u crypto-thing -f
 
 ### Common Issues & Solutions
 
-**❌ "Permission denied" errors**
+** "Permission denied" errors**
 - Verify SSH key is correctly configured in Jenkins
 - Ensure deployment user has sudo privileges on target host
 

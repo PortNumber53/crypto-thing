@@ -1,0 +1,37 @@
+[Unit]
+Description=Crypto Thing Daemon with WebSocket Interface
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=crypto
+Group=crypto
+WorkingDirectory=/opt/crypto-thing
+EnvironmentFile=/opt/crypto-thing/.env
+
+# Start the daemon with websocket server
+ExecStart=/opt/crypto-thing/cryptool daemon --port 40000
+
+# Restart policy
+Restart=always
+RestartSec=10
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/crypto-thing /etc/crypto-thing
+
+# Resource limits
+LimitNOFILE=65536
+MemoryLimit=512M
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=crypto-daemon
+
+[Install]
+WantedBy=multi-user.target

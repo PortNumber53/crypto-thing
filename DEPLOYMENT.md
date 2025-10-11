@@ -70,15 +70,45 @@ COINBASE_CLOUD_API_KEY_NAME="organizations/YOUR_ORG_ID/apiKeys/YOUR_API_KEY_ID"
 COINBASE_CLOUD_API_SECRET="-----BEGIN EC PRIVATE KEY-----\nYOUR_PRIVATE_KEY\n-----END EC PRIVATE KEY-----\n"
 ```
 
-### 3. Start the Service on Pinky
+### 3. Configure Systemd Service
 
+**Copy and install the systemd service**:
 ```bash
-# SSH into pinky and manage the service
-ssh jenkins@pinky
-sudo systemctl enable crypto-thing
-sudo systemctl start crypto-thing
-sudo systemctl status crypto-thing
-sudo journalctl -u crypto-thing -f
+# Copy service file to systemd directory
+sudo cp devops/systemd/crypto-thing-daemon.service /etc/systemd/system/
+
+# Reload systemd and enable service
+sudo systemctl daemon-reload
+sudo systemctl enable crypto-thing-daemon
+
+# Start the service
+sudo systemctl start crypto-thing-daemon
+```
+
+**Alternative: Use the daemon manager script**:
+```bash
+# Make script executable and run
+chmod +x devops/systemd/daemon-manager.sh
+sudo devops/systemd/daemon-manager.sh install
+sudo devops/systemd/daemon-manager.sh start
+```
+
+### 4. Verify Daemon Operation
+
+**Check service status**:
+```bash
+sudo systemctl status crypto-thing-daemon
+```
+
+**Check daemon health**:
+```bash
+curl http://localhost:40000/health
+# Should return: {"status":"healthy","timestamp":"...","connections":0}
+```
+
+**View service logs**:
+```bash
+sudo journalctl -u crypto-thing-daemon -f
 ```
 
 ## 🏗️ Deployment Structure
@@ -86,13 +116,21 @@ sudo journalctl -u crypto-thing -f
 Remote deployment structure on `pinky`:
 ```
 /opt/crypto-thing/          # Main application directory
-├── cryptool              # Built binary
+├── cryptool              # Built binary (daemon + CLI modes)
 ├── migrations/           # Database migrations
-├── .env                  # Environment variables (CRYPTO_CONFIG_FILE=/etc/crypto-thing/crypto.ini)
+├── .env                  # Environment variables (CRYPTO_CONFIG_FILE=/etc/crypto-thing/crypto.ini, DAEMON_PORT=40000)
 └── tmp/                  # Temporary files
 
 /etc/crypto-thing/         # System configuration
 └── crypto.ini           # Application configuration
+
+/etc/systemd/system/       # Systemd services
+└── crypto-thing-daemon.service  # Daemon service definition
+
+# Project structure (source repository)
+devops/systemd/           # Deployment and service management
+├── daemon-manager.sh     # Service management script
+└── crypto-thing-daemon.service  # Systemd service template
 ```
 
 ## 🔧 Jenkins Pipeline Features

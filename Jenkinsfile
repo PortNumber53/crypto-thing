@@ -72,17 +72,10 @@ pipeline {
                             scp -r migrations ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
                         fi
 
-                        # Copy configuration files if they exist
-                        if [ -f "${WORKSPACE}/crypto.ini.deploy" ]; then
-                            # Check if crypto.ini already exists on target host
-                            if ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "test -f ${CONFIG_DIR}/crypto.ini"; then
-                                echo "Configuration file ${CONFIG_DIR}/crypto.ini already exists on target host. Skipping deployment configuration."
-                            else
-                                echo "Deploying configuration file to ${CONFIG_DIR}/crypto.ini"
-                                scp crypto.ini.deploy ${DEPLOY_USER}@${DEPLOY_HOST}:/tmp/crypto.ini
-                                ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo mv /tmp/crypto.ini ${CONFIG_DIR}/crypto.ini"
-                                ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo chmod 644 ${CONFIG_DIR}/crypto.ini"
-                            fi
+                        # Copy service management files if they exist
+                        if [ -d "${WORKSPACE}/devops/systemd" ]; then
+                            scp -r devops/systemd ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/
+                            ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/devops/systemd/daemon-manager.sh"
                         fi
                     """
                 }
@@ -112,11 +105,11 @@ EOF"
                 sshagent(credentials: ["${SSH_KEY_ID}"]) {
                     sh """
                         # Create systemd service file on remote host
-                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo tee /etc/systemd/system/crypto-thing.service > /dev/null" << 'EOF'
+                        ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo tee /etc/systemd/system/crypto-thing-daemon.service > /dev/null" << 'EOF'
 [Unit]
-Description=Crypto Thing Tool
-After=network.target postgresql.service
-Requires=postgresql.service
+Description=Crypto Thing Daemon with WebSocket Interface
+After=network.target
+Wants=network.target
 
 [Service]
 Type=simple
@@ -124,7 +117,11 @@ User=${DEPLOY_USER}
 Group=${DEPLOY_USER}
 WorkingDirectory=${DEPLOY_DIR}
 EnvironmentFile=${DEPLOY_DIR}/.env
-ExecStart=/opt/crypto-thing/cryptool daemon --port 40000
+
+# Start the daemon with websocket server
+ExecStart=${DEPLOY_DIR}/${BINARY_NAME} daemon --port 40000
+
+# Restart policy
 Restart=always
 RestartSec=10
 
@@ -134,6 +131,15 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
 ReadWritePaths=${DEPLOY_DIR} ${CONFIG_DIR}
+
+# Resource limits
+LimitNOFILE=65536
+MemoryLimit=512M
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=crypto-daemon
 
 [Install]
 WantedBy=multi-user.target
