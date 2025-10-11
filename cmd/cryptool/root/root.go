@@ -134,6 +134,32 @@ func NewJobsCmd() *cobra.Command {
 			return nil
 		},
 	}
+	listCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List active daemon jobs",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			port := os.Getenv("DAEMON_PORT")
+			if port == "" { port = "40000" }
+			resp, err := http.Get("http://localhost:" + port + "/status")
+			if err != nil { return fmt.Errorf("request failed: %w", err) }
+			defer resp.Body.Close()
+			b, _ := io.ReadAll(resp.Body)
+			// Print only jobs if possible
+			var payload map[string]interface{}
+			if json.Unmarshal(b, &payload) == nil {
+				jobs, _ := payload["jobs"]
+				enc := json.NewEncoder(cmd.OutOrStdout())
+				enc.SetIndent("", "  ")
+				if jobs != nil {
+					return enc.Encode(jobs)
+				}
+				return enc.Encode(payload)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), string(b))
+			return nil
+		},
+	}
 	jobsCmd.AddCommand(killCmd)
+	jobsCmd.AddCommand(listCmd)
 	return jobsCmd
 }
