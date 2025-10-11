@@ -64,13 +64,15 @@ pipeline {
                         ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "sudo chown -R ${DEPLOY_USER}:${DEPLOY_USER} ${DEPLOY_DIR}"
 
                         # Copy binary to remote host
-                        eval "scp ${BINARY_NAME} ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
+                        BINARY_DEST="${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
+                        scp ${BINARY_NAME} "${BINARY_DEST}"
                         ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/${BINARY_NAME}"
 
                         # Copy migrations if they exist
                         if [ -d "${WORKSPACE}/migrations" ]; then
                             echo "Copying database migrations..."
-                            eval "scp -r migrations ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
+                            MIGRATION_DEST="${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
+                            scp -r migrations "${MIGRATION_DEST}"
                         else
                             echo "Warning: Migrations directory not found in workspace"
                         fi
@@ -78,8 +80,9 @@ pipeline {
                         # Copy service management files if they exist
                         if [ -d "${WORKSPACE}/devops/systemd" ]; then
                             echo "Copying service management files..."
-                            # Use eval to handle the variable substitution properly
-                            eval "scp -r devops/systemd ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
+                            # Construct the remote path and use it directly
+                            REMOTE_DEST="${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_DIR}/"
+                            scp -r devops/systemd "${REMOTE_DEST}"
                             if [ $? -eq 0 ]; then
                                 echo "Setting executable permissions on daemon manager..."
                                 ssh -l ${DEPLOY_USER} ${DEPLOY_HOST} "chmod +x ${DEPLOY_DIR}/devops/systemd/daemon-manager.sh"
