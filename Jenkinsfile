@@ -151,7 +151,7 @@ ReadWritePaths=${env.DEPLOY_DIR} ${env.CONFIG_DIR}
 
 # Resource limits
 LimitNOFILE=65536
-MemoryLimit=512M
+MemoryMax=512M
 
 # Logging
 StandardOutput=journal
@@ -162,9 +162,11 @@ SyslogIdentifier=crypto-thing
 WantedBy=multi-user.target
 EOF
 
-                        # Reload systemd and set permissions
+                        # Reload systemd, set permissions, enable and restart service
                         ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo systemctl daemon-reload"
                         ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo chown -R ${env.DEPLOY_USER}:${env.DEPLOY_USER} ${env.DEPLOY_DIR}"
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo systemctl enable crypto-thing"
+                        ssh -l ${env.DEPLOY_USER} ${env.DEPLOY_HOST} "sudo systemctl restart crypto-thing"
                     """
                 }
             }
