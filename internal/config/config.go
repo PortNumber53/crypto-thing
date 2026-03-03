@@ -2,16 +2,16 @@ package config
 
 import (
 	"context"
-	"fmt"
 	"encoding/json"
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
-	"net/url"
 	"strconv"
 	"strings"
 
-	ini "gopkg.in/ini.v1"
 	"github.com/joho/godotenv"
+	ini "gopkg.in/ini.v1"
 )
 
 // Context plumb for config
@@ -36,14 +36,14 @@ type Config struct {
 		URL string
 	}
 	Coinbase struct {
-		APIKey     string
-		APISecret  string
-		Passphrase string
+		APIKey        string
+		APISecret     string
+		Passphrase    string
 		APIKeyName    string
 		APIPrivateKey string
-		RPM         int
-		MaxRetries  int
-		BackoffMS   int
+		RPM           int
+		MaxRetries    int
+		BackoffMS     int
 	}
 	App struct {
 		Verbose bool
@@ -74,7 +74,10 @@ func Load(path, credsPath string) (*Config, error) {
 
 			// Check for CRYPTO_CONFIG_FILE variable
 			if configFile := os.Getenv("CRYPTO_CONFIG_FILE"); configFile != "" {
-				path = configFile
+				path = expandTilde(configFile)
+			} else {
+				// No external config file specified — use the CWD .env directly
+				path = envFile
 			}
 		} else {
 			// Fall back to old logic if no .env file in current directory
@@ -124,10 +127,10 @@ func Load(path, credsPath string) (*Config, error) {
 			}
 			if host != "" && port != "" && name != "" && user != "" {
 				u := &url.URL{
-					Scheme: "postgres",
-					User:   url.UserPassword(user, pass),
-					Host:   fmt.Sprintf("%s:%s", host, port),
-					Path:   "/" + name,
+					Scheme:   "postgres",
+					User:     url.UserPassword(user, pass),
+					Host:     fmt.Sprintf("%s:%s", host, port),
+					Path:     "/" + name,
 					RawQuery: url.Values{"sslmode": []string{sslmode}}.Encode(),
 				}
 				c.Database.URL = u.String()
@@ -187,10 +190,10 @@ func Load(path, credsPath string) (*Config, error) {
 			if host != "" && port != "" && name != "" && user != "" {
 				// Compose a Postgres URL safely
 				u := &url.URL{
-					Scheme: "postgres",
-					User:   url.UserPassword(user, pass),
-					Host:   fmt.Sprintf("%s:%s", host, port),
-					Path:   "/" + name,
+					Scheme:   "postgres",
+					User:     url.UserPassword(user, pass),
+					Host:     fmt.Sprintf("%s:%s", host, port),
+					Path:     "/" + name,
 					RawQuery: url.Values{"sslmode": []string{sslmode}}.Encode(),
 				}
 				c.Database.URL = u.String()
@@ -353,6 +356,18 @@ func splitAndTrim(s string) []string {
 		out = append(out, trimSpaces(cur))
 	}
 	return out
+}
+
+// expandTilde replaces a leading ~ with the user's home directory.
+func expandTilde(path string) string {
+	if path == "~" || strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		return filepath.Join(home, path[1:])
+	}
+	return path
 }
 
 func trimSpaces(s string) string {

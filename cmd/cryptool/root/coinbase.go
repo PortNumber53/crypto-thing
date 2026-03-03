@@ -9,5 +9,6 @@ func NewCoinbaseCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newCoinbaseDataCmd())
 	cmd.AddCommand(newCoinbaseWalletCmd())
+	cmd.AddCommand(newCoinbaseProductsSyncCmd())
 	return cmd
 }

@@ -49,66 +49,65 @@ type Client struct {
 // GetCandlesOnce fetches candles for a single sub-range [start,end] with an optional limit (max 350 per API docs).
 // It does not iterate over the full requested range.
 func (c *Client) GetCandlesOnce(ctx context.Context, productID string, start, end time.Time, granularity string, limit int64) ([]Candle, error) {
-    path := fmt.Sprintf("/api/v3/brokerage/market/products/%s/candles", url.PathEscape(productID))
-    if limit <= 0 || limit > 350 {
-        limit = 350
-    }
-    q := url.Values{}
-    q.Set("start", strconv.FormatInt(start.UTC().Unix(), 10))
-    q.Set("end", strconv.FormatInt(end.UTC().Unix(), 10))
-    q.Set("granularity", mapGranularity(granularity))
-    q.Set("limit", strconv.FormatInt(limit, 10))
-    resp, err := c.do(ctx, http.MethodGet, path, q, "")
-    if err != nil {
-        return nil, err
-    }
-    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-        b, _ := io.ReadAll(resp.Body)
-        resp.Body.Close()
-        return nil, fmt.Errorf("coinbase http %d: %s", resp.StatusCode, string(b))
-    }
-    var payload struct {
-        Candles []struct {
-            Start   string  `json:"start"`
-            Low     string  `json:"low"`
-            High    string  `json:"high"`
-            Open    string  `json:"open"`
-            Close   string  `json:"close"`
-            Volume  string  `json:"volume"`
-        } `json:"candles"`
-    }
-    dec := json.NewDecoder(resp.Body)
-    if err := dec.Decode(&payload); err != nil {
-        resp.Body.Close()
-        return nil, fmt.Errorf("decode candles: %w", err)
-    }
-    resp.Body.Close()
-    // Ensure ascending order
-    out := make([]Candle, 0, len(payload.Candles))
-    for i := len(payload.Candles) - 1; i >= 0; i-- {
-        cnd := payload.Candles[i]
-        ts := parseStartTime(cnd.Start)
-        out = append(out, Candle{
-            Time:   ts,
-            Open:   parseFloat(cnd.Open),
-            High:   parseFloat(cnd.High),
-            Low:    parseFloat(cnd.Low),
-            Close:  parseFloat(cnd.Close),
-            Volume: parseFloat(cnd.Volume),
-        })
-    }
-    return out, nil
+	path := fmt.Sprintf("/api/v3/brokerage/market/products/%s/candles", url.PathEscape(productID))
+	if limit <= 0 || limit > 350 {
+		limit = 350
+	}
+	q := url.Values{}
+	q.Set("start", strconv.FormatInt(start.UTC().Unix(), 10))
+	q.Set("end", strconv.FormatInt(end.UTC().Unix(), 10))
+	q.Set("granularity", mapGranularity(granularity))
+	q.Set("limit", strconv.FormatInt(limit, 10))
+	resp, err := c.do(ctx, http.MethodGet, path, q, "")
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return nil, fmt.Errorf("coinbase http %d: %s", resp.StatusCode, string(b))
+	}
+	var payload struct {
+		Candles []struct {
+			Start  string `json:"start"`
+			Low    string `json:"low"`
+			High   string `json:"high"`
+			Open   string `json:"open"`
+			Close  string `json:"close"`
+			Volume string `json:"volume"`
+		} `json:"candles"`
+	}
+	dec := json.NewDecoder(resp.Body)
+	if err := dec.Decode(&payload); err != nil {
+		resp.Body.Close()
+		return nil, fmt.Errorf("decode candles: %w", err)
+	}
+	resp.Body.Close()
+	// Ensure ascending order
+	out := make([]Candle, 0, len(payload.Candles))
+	for i := len(payload.Candles) - 1; i >= 0; i-- {
+		cnd := payload.Candles[i]
+		ts := parseStartTime(cnd.Start)
+		out = append(out, Candle{
+			Time:   ts,
+			Open:   parseFloat(cnd.Open),
+			High:   parseFloat(cnd.High),
+			Low:    parseFloat(cnd.Low),
+			Close:  parseFloat(cnd.Close),
+			Volume: parseFloat(cnd.Volume),
+		})
+	}
+	return out, nil
 }
 
-
 func (c *Client) GetProducts(ctx context.Context) ([]Product, error) {
-	path := "/api/v3/brokerage/products"
+	path := "/api/v3/brokerage/market/products"
 	q := url.Values{}
 	// The /products endpoint does not support pagination. To get all products,
 	// we must set a limit high enough to retrieve them in a single call.
 	q.Set("limit", "9999")
 
-	resp, err := c.do(ctx, http.MethodGet, path, q, "")
+	resp, err := c.doPublic(ctx, http.MethodGet, path, q, "")
 	if err != nil {
 		return nil, err
 	}
@@ -404,28 +403,27 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	return c.doRequest(req)
 }
 
-
 func mapGranularity(g string) string {
-    switch strings.ToLower(g) {
-    case "1m", "1min", "one_minute":
-        return "ONE_MINUTE"
-    case "5m", "5min", "five_minute":
-        return "FIVE_MINUTE"
-    case "15m", "15min", "fifteen_minute":
-        return "FIFTEEN_MINUTE"
-    case "30m", "thirty_minute":
-        return "THIRTY_MINUTE"
-    case "1h", "60m", "one_hour":
-        return "ONE_HOUR"
-    case "2h", "two_hour":
-        return "TWO_HOUR"
-    case "6h", "six_hour":
-        return "SIX_HOUR"
-    case "1d", "one_day", "24h":
-        return "ONE_DAY"
-    default:
-        return "ONE_HOUR"
-    }
+	switch strings.ToLower(g) {
+	case "1m", "1min", "one_minute":
+		return "ONE_MINUTE"
+	case "5m", "5min", "five_minute":
+		return "FIVE_MINUTE"
+	case "15m", "15min", "fifteen_minute":
+		return "FIFTEEN_MINUTE"
+	case "30m", "thirty_minute":
+		return "THIRTY_MINUTE"
+	case "1h", "60m", "one_hour":
+		return "ONE_HOUR"
+	case "2h", "two_hour":
+		return "TWO_HOUR"
+	case "6h", "six_hour":
+		return "SIX_HOUR"
+	case "1d", "one_day", "24h":
+		return "ONE_DAY"
+	default:
+		return "ONE_HOUR"
+	}
 }
 
 func parseFloat(s string) float64 {

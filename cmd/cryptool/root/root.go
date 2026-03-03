@@ -8,14 +8,15 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/spf13/cobra"
 	"cryptool/internal/config"
+
+	"github.com/spf13/cobra"
 )
 
 var (
-	cfgPath      string
-	appCfg       *config.Config
-	verbose      bool
+	cfgPath       string
+	appCfg        *config.Config
+	verbose       bool
 	coinbaseCreds string
 )
 
@@ -50,6 +51,8 @@ func Execute(migrationsFS embed.FS) error {
 	rootCmd.AddCommand(NewClientCmd())
 	rootCmd.AddCommand(NewServerCmd())
 	rootCmd.AddCommand(NewJobsCmd())
+	rootCmd.AddCommand(NewBacktestCmd())
+	rootCmd.AddCommand(NewServeCmd())
 	return rootCmd.Execute()
 }
 
@@ -87,9 +90,13 @@ func NewServerCmd() *cobra.Command {
 		Short: "Show daemon status and active jobs",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			port := os.Getenv("DAEMON_PORT")
-			if port == "" { port = "40000" }
+			if port == "" {
+				port = "40000"
+			}
 			resp, err := http.Get("http://localhost:" + port + "/status")
-			if err != nil { return fmt.Errorf("request failed: %w", err) }
+			if err != nil {
+				return fmt.Errorf("request failed: %w", err)
+			}
 			defer resp.Body.Close()
 			b, _ := io.ReadAll(resp.Body)
 			var pretty map[string]interface{}
@@ -115,10 +122,14 @@ func NewJobsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
 			port := os.Getenv("DAEMON_PORT")
-			if port == "" { port = "40000" }
+			if port == "" {
+				port = "40000"
+			}
 			url := fmt.Sprintf("http://localhost:%s/jobs/kill?id=%s", port, id)
 			resp, err := http.Get(url)
-			if err != nil { return fmt.Errorf("request failed: %w", err) }
+			if err != nil {
+				return fmt.Errorf("request failed: %w", err)
+			}
 			defer resp.Body.Close()
 			b, _ := io.ReadAll(resp.Body)
 			if resp.StatusCode >= 300 {
@@ -139,9 +150,13 @@ func NewJobsCmd() *cobra.Command {
 		Short: "List active daemon jobs",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			port := os.Getenv("DAEMON_PORT")
-			if port == "" { port = "40000" }
+			if port == "" {
+				port = "40000"
+			}
 			resp, err := http.Get("http://localhost:" + port + "/status")
-			if err != nil { return fmt.Errorf("request failed: %w", err) }
+			if err != nil {
+				return fmt.Errorf("request failed: %w", err)
+			}
 			defer resp.Body.Close()
 			b, _ := io.ReadAll(resp.Body)
 			// Print only jobs if possible

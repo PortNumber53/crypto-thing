@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.0] - 2026-03-02
+- **Feature(backtest):** Added `cryptool backtest run` command to simulate trading strategies against historical candle data stored in the database. Supports configurable signals (RSI, MACD, Bollinger Bands, EMA Crossover), combination methods (voting, consensus, weighted), and a profitability gate (min edge + risk/reward ratio) that vetoes marginal entries. Reports total return after fees/slippage/tax, Sharpe ratio, Sortino ratio, max drawdown, Calmar ratio, win rate, and trade count. Optional `--trades` flag prints a full trade log.
+- **Feature(backtest):** Added `cryptool backtest combo` command to exhaustively test all non-empty subsets of available signals and rank results by Sharpe ratio. Designed to surface the best signal combinations without manual iteration.
+- **Feature(backtest):** Added `internal/backtest` package with modular signal implementations, a vectorized backtest engine, and Sharpe/Sortino/drawdown metrics.
+- **Migration(0006):** Added `backtest_results` table to persist strategy comparison results for later analysis. Both `backtest run` and `backtest combo` support `--save` to write results to this table.
+
 ## [0.9.4] - 2025-09-24
 - **Feature(coinbase):** Added a new `exchange coinbase history` command that iterates through all tradable products and fetches their complete 1-minute candle history. This automates the process of backfilling data for the entire exchange, using the same robust gap-filling logic as the `fetch` command.
 

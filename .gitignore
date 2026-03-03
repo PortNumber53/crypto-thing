@@ -38,3 +38,8 @@ credentials.json
 
 # Build artifacts
 tmp/
+
+# Frontend
+frontend/.dev.vars
+frontend/dist/
+frontend/node_modules/
