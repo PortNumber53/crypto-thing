@@ -2,6 +2,12 @@
 
 `cryptool` is a command-line tool for managing cryptocurrency data, including database migrations and fetching historical data from Coinbase.
 
+## Ports
+
+- Frontend (Vite dev): **18810**
+- Backend API (Go): **18811**
+- Wrangler dev (Cloudflare Worker): **18812**
+
 ## Running the Tool
 
 You can run the tool directly from the source code using `go run`:
