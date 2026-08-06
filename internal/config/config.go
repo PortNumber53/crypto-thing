@@ -81,22 +81,28 @@ func Load(path, credsPath string) (*Config, error) {
 			}
 		} else {
 			// Fall back to old logic if no .env file in current directory
-			home, err := os.UserHomeDir()
-			if err != nil {
-				return nil, err
-			}
-			// Try .env first, then fall back to .ini
-			envPath := filepath.Join(home, ".config", "crypto-thing", "config.env")
-			iniPath := filepath.Join(home, ".config", "crypto-thing", "config.ini")
-
-			// Check if .env file exists
-			if _, err := os.Stat(envPath); err == nil {
-				path = envPath
-			} else if _, err := os.Stat(iniPath); err == nil {
-				path = iniPath
+			// Try /etc/crypto-thing/config.ini first, then ~/.config/
+			etcPath := "/etc/crypto-thing/config.ini"
+			if _, err := os.Stat(etcPath); err == nil {
+				path = etcPath
 			} else {
-				// Neither file exists, default to .env path
-				path = envPath
+				home, err := os.UserHomeDir()
+				if err != nil {
+					return nil, err
+				}
+				// Try .env first, then fall back to .ini
+				envPath := filepath.Join(home, ".config", "crypto-thing", "config.env")
+				iniPath := filepath.Join(home, ".config", "crypto-thing", "config.ini")
+
+				// Check if .env file exists
+				if _, err := os.Stat(envPath); err == nil {
+					path = envPath
+				} else if _, err := os.Stat(iniPath); err == nil {
+					path = iniPath
+				} else {
+					// Neither file exists, default to .env path
+					path = envPath
+				}
 			}
 		}
 	}
