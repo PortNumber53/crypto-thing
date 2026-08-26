@@ -62,6 +62,7 @@ COINBASE_RPM=5
 
 func TestLoad_EnvFileWithDiscreteKeys(t *testing.T) {
 	t.Setenv("CRYPTO_CONFIG_FILE", "")
+	t.Setenv("HOME", t.TempDir())
 	// Create a temporary directory and .env file with discrete DB keys
 	tempDir := t.TempDir()
 	originalDir, _ := os.Getwd()
@@ -98,6 +99,46 @@ COINBASE_API_KEY=test_key
 
 	if cfg.Coinbase.APIKey != "test_key" {
 		t.Errorf("Expected COINBASE_API_KEY to be 'test_key', got '%s'", cfg.Coinbase.APIKey)
+	}
+}
+
+func TestLoad_UserINIOverlaysProjectEnv(t *testing.T) {
+	t.Setenv("CRYPTO_CONFIG_FILE", "")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	configDir := filepath.Join(home, ".config", "crypto-thing")
+	if err := os.MkdirAll(configDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(configDir, "config.ini"), []byte(`[coinbase]
+api_key_name = organizations/new/apiKeys/new
+api_private_key = new-private-key
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	workDir := t.TempDir()
+	originalDir, _ := os.Getwd()
+	defer os.Chdir(originalDir)
+	if err := os.Chdir(workDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(".env", []byte(`DATABASE_URL=postgres://project/database
+COINBASE_CLOUD_API_KEY_NAME=organizations/old/apiKeys/old
+COINBASE_CLOUD_API_SECRET=old-private-key
+`), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Database.URL != "postgres://project/database" {
+		t.Fatalf("database URL = %q", cfg.Database.URL)
+	}
+	if cfg.Coinbase.APIKeyName != "organizations/new/apiKeys/new" || cfg.Coinbase.APIPrivateKey != "new-private-key" {
+		t.Fatalf("user config was not preferred: key=%q private=%q", cfg.Coinbase.APIKeyName, cfg.Coinbase.APIPrivateKey)
 	}
 }
 

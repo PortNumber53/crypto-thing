@@ -81,8 +81,16 @@ func Load(path, credsPath string) (*Config, error) {
 			if configFile := os.Getenv("CRYPTO_CONFIG_FILE"); configFile != "" {
 				path = expandTilde(configFile)
 			} else {
-				// No external config file specified — use the CWD .env directly
-				path = envFile
+				home, homeErr := os.UserHomeDir()
+				if homeErr != nil {
+					return nil, homeErr
+				}
+				userPath := preferredUserConfigPath(home)
+				if _, statErr := os.Stat(userPath); statErr == nil {
+					path = userPath
+				} else {
+					path = envFile
+				}
 			}
 		} else {
 			// Fall back to old logic if no .env file in current directory
@@ -280,6 +288,7 @@ func Load(path, credsPath string) (*Config, error) {
 			}
 		}
 	}
+	applyEnvFallback(&c, baseEnv)
 
 	// Load credentials from JSON file if provided (for both .env and .ini)
 	// This is the preferred method and will override any other settings.
@@ -304,6 +313,64 @@ func Load(path, credsPath string) (*Config, error) {
 		c.Coinbase.BackoffMS = 500
 	}
 	return &c, nil
+}
+
+// applyEnvFallback preserves project-local and deployment settings when a
+// per-user config.ini is selected as the preferred overlay.
+func applyEnvFallback(c *Config, envMap map[string]string) {
+	if len(envMap) == 0 {
+		return
+	}
+	if c.Database.URL == "" {
+		c.Database.URL = envMap["DATABASE_URL"]
+		if c.Database.URL == "" {
+			host, port := envMap["DB_HOST"], envMap["DB_PORT"]
+			name, user := envMap["DB_NAME"], envMap["DB_USER"]
+			if host != "" && port != "" && name != "" && user != "" {
+				sslmode := envMap["DB_SSLMODE"]
+				if sslmode == "" {
+					sslmode = "disable"
+				}
+				databaseURL := &url.URL{
+					Scheme: "postgres", User: url.UserPassword(user, envMap["DB_PASSWORD"]),
+					Host: fmt.Sprintf("%s:%s", host, port), Path: "/" + name,
+					RawQuery: url.Values{"sslmode": []string{sslmode}}.Encode(),
+				}
+				c.Database.URL = databaseURL.String()
+			}
+		}
+	}
+	if c.Coinbase.APIKey == "" {
+		c.Coinbase.APIKey = envMap["COINBASE_API_KEY"]
+	}
+	if c.Coinbase.APISecret == "" {
+		c.Coinbase.APISecret = envMap["COINBASE_API_SECRET"]
+	}
+	if c.Coinbase.Passphrase == "" {
+		c.Coinbase.Passphrase = envMap["COINBASE_PASSPHRASE"]
+	}
+	if c.Coinbase.APIKeyName == "" {
+		c.Coinbase.APIKeyName = envMap["COINBASE_API_KEY_NAME"]
+		if c.Coinbase.APIKeyName == "" {
+			c.Coinbase.APIKeyName = envMap["COINBASE_CLOUD_API_KEY_NAME"]
+		}
+	}
+	if c.Coinbase.APIPrivateKey == "" {
+		c.Coinbase.APIPrivateKey = envMap["COINBASE_API_PRIVATE_KEY"]
+		if c.Coinbase.APIPrivateKey == "" {
+			c.Coinbase.APIPrivateKey = envMap["COINBASE_CLOUD_API_SECRET"]
+		}
+	}
+	for target, key := range map[*int]string{
+		&c.Coinbase.RPM: "COINBASE_RPM", &c.Coinbase.MaxRetries: "COINBASE_MAX_RETRIES",
+		&c.Coinbase.BackoffMS: "COINBASE_BACKOFF_MS",
+	} {
+		if *target == 0 {
+			if parsed, err := strconv.Atoi(envMap[key]); err == nil {
+				*target = parsed
+			}
+		}
+	}
 }
 
 // preferredUserConfigPath standardizes the per-user default used by the other
