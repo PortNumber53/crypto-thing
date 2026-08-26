@@ -137,3 +137,25 @@ key2 = value2
 		t.Error("Expected isEnvFile to return false for .ini file")
 	}
 }
+
+func TestPreferredUserConfigPath_PrefersINI(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".config", "crypto-thing")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	iniPath := filepath.Join(dir, "config.ini")
+	envPath := filepath.Join(dir, "config.env")
+	if err := os.WriteFile(envPath, []byte("DATABASE_URL=env\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := preferredUserConfigPath(home); got != envPath {
+		t.Fatalf("fallback path = %q, want %q", got, envPath)
+	}
+	if err := os.WriteFile(iniPath, []byte("[database]\nurl=ini\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := preferredUserConfigPath(home); got != iniPath {
+		t.Fatalf("preferred path = %q, want %q", got, iniPath)
+	}
+}

@@ -86,27 +86,19 @@ func Load(path, credsPath string) (*Config, error) {
 			}
 		} else {
 			// Fall back to old logic if no .env file in current directory
-			// Try /etc/crypto-thing/config.ini first, then ~/.config/
-			etcPath := "/etc/crypto-thing/config.ini"
-			if _, err := os.Stat(etcPath); err == nil {
-				path = etcPath
+			if configured := os.Getenv("CRYPTO_CONFIG_FILE"); configured != "" {
+				path = expandTilde(configured)
 			} else {
-				home, err := os.UserHomeDir()
-				if err != nil {
-					return nil, err
-				}
-				// Try .env first, then fall back to .ini
-				envPath := filepath.Join(home, ".config", "crypto-thing", "config.env")
-				iniPath := filepath.Join(home, ".config", "crypto-thing", "config.ini")
-
-				// Check if .env file exists
-				if _, err := os.Stat(envPath); err == nil {
-					path = envPath
-				} else if _, err := os.Stat(iniPath); err == nil {
-					path = iniPath
+				// Try /etc/crypto-thing/config.ini first, then ~/.config/.
+				etcPath := "/etc/crypto-thing/config.ini"
+				if _, err := os.Stat(etcPath); err == nil {
+					path = etcPath
 				} else {
-					// Neither file exists, default to .env path
-					path = envPath
+					home, err := os.UserHomeDir()
+					if err != nil {
+						return nil, err
+					}
+					path = preferredUserConfigPath(home)
 				}
 			}
 		}
@@ -305,6 +297,20 @@ func Load(path, credsPath string) (*Config, error) {
 		c.Coinbase.BackoffMS = 500
 	}
 	return &c, nil
+}
+
+// preferredUserConfigPath standardizes the per-user default used by the other
+// projects: config.ini wins when both supported formats are present.
+func preferredUserConfigPath(home string) string {
+	iniPath := filepath.Join(home, ".config", "crypto-thing", "config.ini")
+	envPath := filepath.Join(home, ".config", "crypto-thing", "config.env")
+	if _, err := os.Stat(iniPath); err == nil {
+		return iniPath
+	}
+	if _, err := os.Stat(envPath); err == nil {
+		return envPath
+	}
+	return iniPath
 }
 
 // isEnvFile checks if a file appears to be an .env file by examining its content
