@@ -57,6 +57,7 @@ type CoinbaseCreds struct {
 }
 
 func Load(path, credsPath string) (*Config, error) {
+	var baseEnv map[string]string
 	// If no specific path is provided, implement the new .env-based loading logic
 	if path == "" {
 		// First, try to load .env file from current working directory
@@ -67,6 +68,10 @@ func Load(path, credsPath string) (*Config, error) {
 
 		envFile := filepath.Join(cwd, ".env")
 		if _, err := os.Stat(envFile); err == nil {
+			baseEnv, err = godotenv.Read(envFile)
+			if err != nil {
+				return nil, fmt.Errorf("read env file: %w", err)
+			}
 			// Load environment variables from .env file in current directory
 			if err := godotenv.Load(envFile); err != nil {
 				return nil, fmt.Errorf("load env file: %w", err)
@@ -115,6 +120,14 @@ func Load(path, credsPath string) (*Config, error) {
 		envMap, err := godotenv.Read(path)
 		if err != nil {
 			return nil, fmt.Errorf("load env file: %w", err)
+		}
+		// A CRYPTO_CONFIG_FILE referenced by the working-directory .env is an
+		// overlay, not a replacement. Preserve values from the base file when
+		// the overlay does not define them.
+		for key, value := range baseEnv {
+			if _, exists := envMap[key]; !exists {
+				envMap[key] = value
+			}
 		}
 
 		// Map .env variables to config struct

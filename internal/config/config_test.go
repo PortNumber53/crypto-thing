@@ -16,7 +16,7 @@ func TestLoad_EnvFromCurrentDirectory(t *testing.T) {
 	os.Chdir(tempDir)
 
 	// Set environment variable before loading .env file
-	os.Setenv("CRYPTO_CONFIG_FILE", "config.test")
+	t.Setenv("CRYPTO_CONFIG_FILE", "config.test")
 
 	envContent := `DATABASE_URL=postgres://test:test@localhost:5432/testdb?sslmode=disable
 COINBASE_API_KEY=test_key
@@ -61,6 +61,7 @@ COINBASE_RPM=5
 }
 
 func TestLoad_EnvFileWithDiscreteKeys(t *testing.T) {
+	t.Setenv("CRYPTO_CONFIG_FILE", "")
 	// Create a temporary directory and .env file with discrete DB keys
 	tempDir := t.TempDir()
 	originalDir, _ := os.Getwd()
