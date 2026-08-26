@@ -1,112 +1,32 @@
 import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
-import { Coins, CandlestickChart, FlaskConical, BookMarked, RefreshCw, AlertCircle } from 'lucide-react'
+import { AlertCircle, ArrowRight, BarChart3, BookOpen, CandlestickChart, FlaskConical, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
-
-function StatCard({ label, value, icon: Icon, to, color }: {
-  label: string; value: number | string; icon: React.ElementType; to: string; color: string
-}) {
-  return (
-    <Link to={to} className="block bg-slate-900 border border-slate-800 rounded-xl p-5 hover:border-slate-700 transition-colors">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm text-slate-400">{label}</span>
-        <div className={`w-8 h-8 rounded-lg ${color} flex items-center justify-center`}>
-          <Icon size={15} className="text-white" />
-        </div>
-      </div>
-      <p className="text-2xl font-bold text-slate-100">{value?.toLocaleString()}</p>
-    </Link>
-  )
-}
+import { api } from '@/lib/api'
+import { fmtDate, fmtPct } from '@/lib/utils'
+import { Metric, PageHeader, Panel, primaryButton, secondaryButton } from '@/components/UI'
 
 export default function Dashboard() {
-  const { data: stats, isLoading, isError, refetch } = useQuery({
-    queryKey: ['stats'],
-    queryFn: api.stats,
-  })
-
-  const { data: backtests } = useQuery({
-    queryKey: ['backtests', '', 5],
-    queryFn: () => api.backtests('', 5),
-  })
-
-  return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-slate-100">Dashboard</h1>
-          <p className="text-sm text-slate-400 mt-0.5">Overview of your crypto backtesting workspace</p>
-        </div>
-        <button
-          onClick={() => refetch()}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors"
-        >
-          <RefreshCw size={13} />
-          Refresh
-        </button>
-      </div>
-
-      {isError && (
-        <div className="flex items-center gap-2 px-4 py-3 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-sm">
-          <AlertCircle size={15} />
-          Cannot reach API server. Make sure <code className="font-mono text-xs bg-slate-800 px-1 rounded">./cryptool serve</code> is running.
-        </div>
-      )}
-
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Products" value={isLoading ? '…' : stats?.products ?? 0} icon={Coins} to="/products" color="bg-blue-500" />
-        <StatCard label="Candles" value={isLoading ? '…' : stats?.candles ?? 0} icon={CandlestickChart} to="/candles" color="bg-violet-500" />
-        <StatCard label="Backtests" value={isLoading ? '…' : stats?.backtests ?? 0} icon={FlaskConical} to="/backtest" color="bg-emerald-500" />
-        <StatCard label="Strategies" value={isLoading ? '…' : stats?.strategies ?? 0} icon={BookMarked} to="/strategies" color="bg-amber-500" />
-      </div>
-
-      {/* Quick actions */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-        <h2 className="text-sm font-semibold text-slate-300 mb-4">Quick Actions</h2>
-        <div className="flex flex-wrap gap-3">
-          <Link to="/products" className="px-4 py-2 bg-blue-500 hover:bg-blue-400 text-white text-sm font-medium rounded-lg transition-colors">
-            Sync Products
-          </Link>
-          <Link to="/candles" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg transition-colors">
-            View Candles
-          </Link>
-          <Link to="/backtest" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg transition-colors">
-            Run Backtest
-          </Link>
-          <Link to="/strategies" className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg transition-colors">
-            New Strategy
-          </Link>
-        </div>
-      </div>
-
-      {/* Recent backtests */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-slate-300">Recent Backtests</h2>
-          <Link to="/backtest" className="text-xs text-blue-400 hover:text-blue-300">View all →</Link>
-        </div>
-        {!backtests || backtests.length === 0 ? (
-          <p className="text-sm text-slate-500 text-center py-6">No backtests yet. <Link to="/backtest" className="text-blue-400 hover:underline">Run your first one →</Link></p>
-        ) : (
-          <div className="space-y-2">
-            {backtests.map((bt, i) => (
-              <div key={bt.id ?? i} className="flex items-center justify-between py-2 border-b border-slate-800 last:border-0">
-                <div>
-                  <span className="text-sm font-medium text-slate-200">{bt.product_id}</span>
-                  <span className="ml-2 text-xs text-slate-500">{bt.granularity} · {bt.signals}</span>
-                </div>
-                <div className="flex items-center gap-4 text-sm">
-                  <span className={bt.total_return >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
-                    {bt.total_return >= 0 ? '+' : ''}{(bt.total_return * 100).toFixed(1)}%
-                  </span>
-                  <span className="text-slate-500 text-xs">{bt.num_trades} trades</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+  const { data, isLoading, isError, refetch } = useQuery({ queryKey: ['stats'], queryFn: api.stats })
+  const recent = data?.recent_backtests ?? []
+  const best = data?.best_backtest
+  return <div className="space-y-7">
+    <PageHeader eyebrow="Research workspace" title="Good decisions start with honest tests." description="Track your data coverage, validate strategy ideas, and inspect the assumptions behind every result." actions={<><Link className={secondaryButton} to="/market"><BarChart3 size={15} />Explore market</Link><Link className={primaryButton} to="/backtests/new"><FlaskConical size={15} />New backtest</Link></>} />
+    {isError && <div className="flex items-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-300"><AlertCircle size={16} />API unavailable. Start the server with <code className="rounded bg-black/20 px-1.5">cryptool serve</code>.<button className="ml-auto" onClick={() => refetch()}><RefreshCw size={15} /></button></div>}
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <Metric label="Markets" value={isLoading ? '—' : (data?.products ?? 0).toLocaleString()} hint="Coinbase products" />
+      <Metric label="Candles" value={isLoading ? '—' : (data?.candles ?? 0).toLocaleString()} hint="Across stored intervals" />
+      <Metric label="Backtests" value={isLoading ? '—' : (data?.backtests ?? 0).toLocaleString()} hint="Saved research runs" />
+      <Metric label="Strategies" value={isLoading ? '—' : (data?.strategies ?? 0).toLocaleString()} hint="Reusable configurations" />
+    </div>
+    <div className="grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
+      <Panel className="overflow-hidden">
+        <div className="flex items-center justify-between border-b border-slate-800 px-5 py-4"><div><h2 className="font-medium text-white">Recent research</h2><p className="mt-1 text-xs text-slate-500">Your latest saved backtests</p></div><Link className="flex items-center gap-1 text-xs text-cyan-400 hover:text-cyan-300" to="/backtests">View all <ArrowRight size={13} /></Link></div>
+        {recent.length === 0 ? <div className="p-10 text-center text-sm text-slate-500">No saved runs yet. Your first result will appear here.</div> : <div>{recent.map(bt => <Link key={bt.id} to={`/backtests/${bt.id}`} className="grid grid-cols-[1fr_auto] gap-4 border-b border-slate-800/70 px-5 py-4 transition last:border-0 hover:bg-slate-800/30"><div className="min-w-0"><div className="flex items-center gap-2"><span className="font-medium text-slate-200">{bt.product_id}</span><span className="rounded bg-slate-800 px-2 py-0.5 text-[10px] uppercase text-slate-500">{bt.granularity}</span></div><p className="mt-1 truncate text-xs text-slate-500">{bt.signals || `${bt.bull_signals} / ${bt.bear_signals}`} · {fmtDate(bt.created_at)}</p></div><div className="text-right"><p className={bt.total_return >= 0 ? 'font-semibold text-emerald-400' : 'font-semibold text-rose-400'}>{fmtPct(bt.total_return)}</p><p className="mt-1 text-xs text-slate-500">{bt.num_trades} trades</p></div></Link>)}</div>}
+      </Panel>
+      <div className="space-y-5">
+        <Panel className="relative overflow-hidden p-5"><div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-cyan-500/10 blur-2xl" /><p className="text-xs font-medium uppercase tracking-wider text-slate-500">Best observed return</p>{best ? <><p className={best.total_return >= 0 ? 'mt-4 text-4xl font-semibold text-emerald-400' : 'mt-4 text-4xl font-semibold text-rose-400'}>{fmtPct(best.total_return)}</p><p className="mt-2 text-sm text-slate-300">{best.product_id} · {best.granularity}</p><div className="mt-5 grid grid-cols-3 gap-2 text-xs"><div><p className="text-slate-600">Sharpe</p><p className="mt-1 text-slate-300">{best.sharpe.toFixed(2)}</p></div><div><p className="text-slate-600">Max DD</p><p className="mt-1 text-slate-300">{fmtPct(best.max_drawdown)}</p></div><div><p className="text-slate-600">Win rate</p><p className="mt-1 text-slate-300">{fmtPct(best.win_rate)}</p></div></div></> : <p className="mt-8 text-sm text-slate-500">Save a backtest to establish a benchmark.</p>}</Panel>
+        <Panel className="p-5"><h2 className="font-medium text-white">Research paths</h2><div className="mt-4 space-y-2"><Link to="/candles" className="flex items-center gap-3 rounded-lg p-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white"><CandlestickChart size={16} className="text-violet-400" />Inspect price history</Link><Link to="/strategies" className="flex items-center gap-3 rounded-lg p-2 text-sm text-slate-400 hover:bg-slate-800 hover:text-white"><BookOpen size={16} className="text-amber-400" />Manage strategies</Link></div></Panel>
       </div>
     </div>
-  )
+  </div>
 }

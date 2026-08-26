@@ -1,91 +1,42 @@
-import { NavLink } from 'react-router-dom'
-import {
-  LayoutDashboard, Coins, CandlestickChart,
-  FlaskConical, BookMarked, Zap, Menu, X,
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
 import { useState } from 'react'
+import { NavLink } from 'react-router-dom'
+import { Activity, BarChart3, BookOpen, CandlestickChart, FlaskConical, LayoutDashboard, Menu, X, Zap } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 const NAV = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/products',  icon: Coins,            label: 'Products' },
-  { to: '/candles',   icon: CandlestickChart, label: 'Candles' },
-  { to: '/backtest',  icon: FlaskConical,     label: 'Backtest' },
-  { to: '/strategies',icon: BookMarked,       label: 'Strategies' },
-  { to: '/signals',   icon: Zap,              label: 'Signals' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Overview' },
+  { to: '/market', icon: BarChart3, label: 'Market' },
+  { to: '/candles', icon: CandlestickChart, label: 'Charts' },
+  { to: '/backtests', icon: FlaskConical, label: 'Backtests' },
+  { to: '/strategies', icon: BookOpen, label: 'Strategies' },
+  { to: '/signals', icon: Zap, label: 'Signals' },
 ]
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false)
-
-  return (
-    <div className="flex h-screen bg-slate-950 text-slate-200 overflow-hidden">
-      {/* Sidebar */}
-      <aside
-        className={cn(
-          'fixed inset-y-0 left-0 z-40 flex flex-col w-60 bg-slate-900 border-r border-slate-800 transition-transform duration-200',
-          open ? 'translate-x-0' : '-translate-x-full',
-          'lg:static lg:translate-x-0 lg:flex',
-        )}
-      >
-        {/* Logo */}
-        <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-800">
-          <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center">
-            <CandlestickChart size={16} className="text-white" />
-          </div>
-          <span className="font-bold text-slate-100 tracking-tight">CryptoTool</span>
-        </div>
-
-        {/* Nav */}
-        <nav className="flex-1 py-4 space-y-0.5 px-2 overflow-y-auto">
-          {NAV.map(({ to, icon: Icon, label }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) =>
-                cn(
-                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                  isActive
-                    ? 'bg-blue-500/10 text-blue-400 font-medium'
-                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800',
-                )
-              }
-            >
-              <Icon size={16} />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-
-        <div className="px-5 py-3 border-t border-slate-800">
-          <p className="text-xs text-slate-600">crypto-thing v0.1</p>
-        </div>
-      </aside>
-
-      {/* Overlay */}
-      {open && (
-        <div
-          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
-          onClick={() => setOpen(false)}
-        />
-      )}
-
-      {/* Main */}
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        {/* Mobile top bar */}
-        <header className="lg:hidden flex items-center gap-3 px-4 py-3 border-b border-slate-800 bg-slate-900">
-          <button
-            onClick={() => setOpen(!open)}
-            className="text-slate-400 hover:text-slate-200"
-          >
-            {open ? <X size={20} /> : <Menu size={20} />}
-          </button>
-          <span className="font-semibold text-slate-100">CryptoTool</span>
-        </header>
-
-        <main className="flex-1 overflow-y-auto">{children}</main>
+  return <div className="min-h-screen bg-slate-950 text-slate-200">
+    <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_70%_-20%,rgba(6,182,212,.13),transparent_38%),radial-gradient(circle_at_0%_50%,rgba(99,102,241,.08),transparent_32%)]" />
+    <aside className={cn('fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-800/80 bg-slate-950/95 backdrop-blur-xl transition-transform lg:translate-x-0', open ? 'translate-x-0' : '-translate-x-full')}>
+      <div className="flex items-center gap-3 border-b border-slate-800/80 px-5 py-4">
+        <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 shadow-lg shadow-cyan-500/20"><Activity size={18} className="text-white" /></div>
+        <div><p className="font-semibold tracking-tight text-white">Crypto Thing</p><p className="text-[10px] uppercase tracking-[.18em] text-slate-500">Research console</p></div>
       </div>
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-5">
+        <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[.2em] text-slate-600">Workspace</p>
+        {NAV.map(({ to, icon: Icon, label }) => <NavLink key={to} to={to} onClick={() => setOpen(false)} className={({ isActive }) => cn('flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition', isActive ? 'bg-cyan-500/10 font-medium text-cyan-300 ring-1 ring-cyan-500/15' : 'text-slate-400 hover:bg-slate-900 hover:text-slate-100')}>
+          <Icon size={16} />{label}
+        </NavLink>)}
+      </nav>
+      <div className="border-t border-slate-800/80 p-4"><div className="rounded-xl bg-slate-900 p-3"><div className="flex items-center gap-2 text-xs text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />Local research mode</div><p className="mt-1 text-[11px] text-slate-600">Historical analysis only</p></div></div>
+    </aside>
+    {open && <button aria-label="Close navigation" className="fixed inset-0 z-30 bg-black/70 lg:hidden" onClick={() => setOpen(false)} />}
+    <div className="relative lg:pl-64">
+      <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-800/70 bg-slate-950/80 px-4 backdrop-blur-xl lg:px-8">
+        <button aria-label="Open navigation" onClick={() => setOpen(!open)} className="rounded-lg p-2 text-slate-400 hover:bg-slate-900 lg:hidden">{open ? <X size={20} /> : <Menu size={20} />}</button>
+        <div className="hidden text-xs text-slate-500 sm:block">Data-driven strategy research</div>
+        <div className="ml-auto flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1.5 text-xs text-slate-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />API connected</div>
+      </header>
+      <main className="mx-auto max-w-[1500px] p-4 sm:p-6 lg:p-8">{children}</main>
     </div>
-  )
+  </div>
 }

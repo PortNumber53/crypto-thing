@@ -10,7 +10,12 @@ body {
   background-color: #020617;
   color: #e2e8f0;
   -webkit-font-smoothing: antialiased;
+  min-width: 320px;
 }
+
+button, input, select { font: inherit; }
+button { cursor: pointer; }
+::selection { background: rgba(6, 182, 212, .25); color: #f8fafc; }
 
 ::-webkit-scrollbar {
   width: 6px;
