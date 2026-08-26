@@ -138,6 +138,34 @@ key2 = value2
 	}
 }
 
+func TestLoadINI_CoinbaseJWTKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.ini")
+	contents := `[database]
+url = postgres://localhost/crypto
+
+[coinbase]
+api_key_name = organizations/example/apiKeys/example
+api_private_key = escaped-private-key
+rpm = 8
+`
+	if err := os.WriteFile(path, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Coinbase.APIKeyName != "organizations/example/apiKeys/example" {
+		t.Fatalf("API key name = %q", cfg.Coinbase.APIKeyName)
+	}
+	if cfg.Coinbase.APIPrivateKey != "escaped-private-key" {
+		t.Fatalf("private key = %q", cfg.Coinbase.APIPrivateKey)
+	}
+	if cfg.Coinbase.RPM != 8 {
+		t.Fatalf("RPM = %d", cfg.Coinbase.RPM)
+	}
+}
+
 func TestPreferredUserConfigPath_PrefersINI(t *testing.T) {
 	home := t.TempDir()
 	dir := filepath.Join(home, ".config", "crypto-thing")

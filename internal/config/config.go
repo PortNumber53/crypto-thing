@@ -214,6 +214,8 @@ func Load(path, credsPath string) (*Config, error) {
 		c.Coinbase.APIKey = coinbaseSec.Key("api_key").String()
 		c.Coinbase.APISecret = coinbaseSec.Key("api_secret").String()
 		c.Coinbase.Passphrase = coinbaseSec.Key("passphrase").String()
+		c.Coinbase.APIKeyName = coinbaseSec.Key("api_key_name").String()
+		c.Coinbase.APIPrivateKey = coinbaseSec.Key("api_private_key").String()
 		if c.Coinbase.APIKey == "" {
 			def := cfgfile.Section("default")
 			c.Coinbase.APIKey = def.Key("COINBASE_API_KEY").String()
@@ -235,15 +237,20 @@ func Load(path, credsPath string) (*Config, error) {
 			c.Coinbase.APIKeyName = creds.Name
 			c.Coinbase.APIPrivateKey = creds.PrivateKey
 		} else {
-			// Fallback to old method if no creds file is provided
+			// Fall back to legacy [default] keys when the preferred [coinbase]
+			// names are not present.
 			def := cfgfile.Section("default")
-			c.Coinbase.APIKeyName = def.Key("COINBASE_API_KEY_NAME").String()
 			if c.Coinbase.APIKeyName == "" {
-				c.Coinbase.APIKeyName = def.Key("COINBASE_CLOUD_API_KEY_NAME").String()
+				c.Coinbase.APIKeyName = def.Key("COINBASE_API_KEY_NAME").String()
+				if c.Coinbase.APIKeyName == "" {
+					c.Coinbase.APIKeyName = def.Key("COINBASE_CLOUD_API_KEY_NAME").String()
+				}
 			}
-			c.Coinbase.APIPrivateKey = def.Key("COINBASE_API_PRIVATE_KEY").String()
 			if c.Coinbase.APIPrivateKey == "" {
-				c.Coinbase.APIPrivateKey = def.Key("COINBASE_CLOUD_API_SECRET").String()
+				c.Coinbase.APIPrivateKey = def.Key("COINBASE_API_PRIVATE_KEY").String()
+				if c.Coinbase.APIPrivateKey == "" {
+					c.Coinbase.APIPrivateKey = def.Key("COINBASE_CLOUD_API_SECRET").String()
+				}
 			}
 		}
 		// Rate limiting and retries (prefer [coinbase], fallback to [default])

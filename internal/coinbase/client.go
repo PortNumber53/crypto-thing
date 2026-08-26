@@ -342,7 +342,7 @@ func (c *Client) bearerToken(method, path string) (string, error) {
 	claims := &APIKeyClaims{
 		Claims: &jwt.Claims{
 			Subject:   c.jwtKeyName,
-			Issuer:    "cdp",
+			Issuer:    "coinbase-cloud",
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Expiry:    jwt.NewNumericDate(time.Now().Add(2 * time.Minute)),
 		},
