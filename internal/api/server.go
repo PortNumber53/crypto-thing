@@ -14,6 +14,7 @@ import (
 	"cryptool/internal/coinbase"
 	"cryptool/internal/config"
 	"cryptool/internal/ingest"
+	"cryptool/internal/schema"
 
 	_ "github.com/lib/pq"
 )
@@ -129,7 +130,16 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	row := s.db.QueryRowContext(r.Context(), `
 		SELECT
 			(SELECT COUNT(*) FROM products) AS products,
-			(SELECT COUNT(*) FROM candles WHERE volume >= 0) AS candles,
+			(SELECT COALESCE(SUM(cnt), 0) FROM (
+				SELECT COUNT(*) AS cnt FROM candles_1m WHERE volume >= 0
+				UNION ALL SELECT COUNT(*) FROM candles_5m WHERE volume >= 0
+				UNION ALL SELECT COUNT(*) FROM candles_15m WHERE volume >= 0
+				UNION ALL SELECT COUNT(*) FROM candles_30m WHERE volume >= 0
+				UNION ALL SELECT COUNT(*) FROM candles_1h WHERE volume >= 0
+				UNION ALL SELECT COUNT(*) FROM candles_2h WHERE volume >= 0
+				UNION ALL SELECT COUNT(*) FROM candles_6h WHERE volume >= 0
+				UNION ALL SELECT COUNT(*) FROM candles_1d WHERE volume >= 0
+			) sub) AS candles,
 			(SELECT COUNT(*) FROM backtest_results) AS backtests,
 			(SELECT COUNT(*) FROM strategies) AS strategies
 	`)
@@ -183,7 +193,7 @@ func (s *Server) handleListProducts(w http.ResponseWriter, r *http.Request) {
 				p.new_at,
 				COUNT(c.time) FILTER (WHERE c.volume >= 0) AS candle_count
 			FROM products p
-			LEFT JOIN candles c ON c.exchange = p.exchange AND c.product_id = p.product_id
+			LEFT JOIN candles_1h c ON c.exchange = p.exchange AND c.product_id = p.product_id
 			WHERE p.exchange = $1
 			  AND (UPPER(p.product_id) LIKE $2 OR UPPER(COALESCE(p.display_name,'')) LIKE $2)
 			GROUP BY p.exchange, p.product_id, p.display_name, p.base_currency_id,
@@ -206,7 +216,7 @@ func (s *Server) handleListProducts(w http.ResponseWriter, r *http.Request) {
 				p.new_at,
 				COUNT(c.time) FILTER (WHERE c.volume >= 0) AS candle_count
 			FROM products p
-			LEFT JOIN candles c ON c.exchange = p.exchange AND c.product_id = p.product_id
+			LEFT JOIN candles_1h c ON c.exchange = p.exchange AND c.product_id = p.product_id
 			WHERE p.exchange = $1
 			GROUP BY p.exchange, p.product_id, p.display_name, p.base_currency_id,
 				p.quote_currency_id, p.price, p.price_percentage_change_24h,
@@ -325,17 +335,16 @@ func (s *Server) handleCandles(w http.ResponseWriter, r *http.Request) {
 		limit = 5000
 	}
 
-	granSec := granularitySecs(granularity)
-	rows, err := s.db.QueryContext(r.Context(), `
+	table := schema.CandleTable(granularity)
+	rows, err := s.db.QueryContext(r.Context(), fmt.Sprintf(`
 		SELECT time, open, high, low, close, volume
-		FROM candles
+		FROM %s
 		WHERE exchange = $1 AND product_id = $2
 		  AND time >= $3 AND time < $4
 		  AND volume >= 0
-		  AND EXTRACT(EPOCH FROM time)::bigint % $5 = 0
 		ORDER BY time ASC
-		LIMIT $6
-	`, exchange, product, start, end, granSec, limit)
+		LIMIT $5
+	`, table), exchange, product, start, end, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -357,29 +366,6 @@ func (s *Server) handleCandles(w http.ResponseWriter, r *http.Request) {
 		candles = []CandleResponse{}
 	}
 	writeJSON(w, http.StatusOK, candles)
-}
-
-func granularitySecs(g string) int64 {
-	switch strings.ToLower(g) {
-	case "1m":
-		return 60
-	case "5m":
-		return 300
-	case "15m":
-		return 900
-	case "30m":
-		return 1800
-	case "1h":
-		return 3600
-	case "2h":
-		return 7200
-	case "6h":
-		return 21600
-	case "1d":
-		return 86400
-	default:
-		return 3600
-	}
 }
 
 // ─── /api/signals ───────────────────────────────────────────────────────────
@@ -418,6 +404,12 @@ func (s *Server) handleSignals(w http.ResponseWriter, r *http.Request) {
 			Params:      map[string]any{"fast": 9, "slow": 21},
 		},
 	}
+	signals = append(signals, SignalInfo{
+		Name:        "sma",
+		Display:     "SMA Cross",
+		Description: "Simple Moving Average crossover. Buys when price crosses above the SMA, sells when price crosses below. Default period is 200 (the classic long-term trend filter).",
+		Params:      map[string]any{"period": 200},
+	})
 	writeJSON(w, http.StatusOK, signals)
 }
 
@@ -590,7 +582,7 @@ func (s *Server) handleRunBacktest(w http.ResponseWriter, r *http.Request) {
 		end = time.Now().UTC()
 	}
 
-	candles, err := backtest.LoadCandles(r.Context(), s.cfg.Database.URL, req.Exchange, req.ProductID, start, end)
+	candles, err := backtest.LoadCandles(r.Context(), s.cfg.Database.URL, req.Exchange, req.ProductID, req.Granularity, start, end)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "load candles: "+err.Error())
 		return
@@ -838,7 +830,7 @@ func (s *Server) handleRunStrategy(w http.ResponseWriter, r *http.Request) {
 		end = time.Now().UTC()
 	}
 
-	candles, err := backtest.LoadCandles(r.Context(), s.cfg.Database.URL, req.Exchange, req.ProductID, start, end)
+	candles, err := backtest.LoadCandles(r.Context(), s.cfg.Database.URL, req.Exchange, req.ProductID, req.Granularity, start, end)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "load candles: "+err.Error())
 		return
@@ -876,7 +868,7 @@ func (s *Server) handleRunStrategy(w http.ResponseWriter, r *http.Request) {
 
 func setDefaults(inp *StrategyInput) {
 	if inp.Signals == "" {
-		inp.Signals = "rsi,macd,bbands,ema_cross"
+		inp.Signals = "rsi,macd,bbands,ema_cross,sma"
 	}
 	if inp.Combination == "" {
 		inp.Combination = "voting"

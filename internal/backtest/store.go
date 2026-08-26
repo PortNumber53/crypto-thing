@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"cryptool/internal/schema"
 	_ "github.com/lib/pq"
 )
 
@@ -20,21 +21,23 @@ type Candle struct {
 }
 
 // LoadCandles fetches real candles (volume >= 0) from the DB for a product/exchange over [start, end).
-func LoadCandles(ctx context.Context, dbURL, exchange, product string, start, end time.Time) ([]Candle, error) {
+func LoadCandles(ctx context.Context, dbURL, exchange, product, granularity string, start, end time.Time) ([]Candle, error) {
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
 
-	rows, err := db.QueryContext(ctx, `
+	table := schema.CandleTable(granularity)
+
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
 		SELECT time, open, high, low, close, volume
-		FROM candles
+		FROM %s
 		WHERE exchange = $1 AND product_id = $2
 		  AND time >= $3 AND time < $4
 		  AND volume >= 0
 		ORDER BY time ASC
-	`, exchange, product, start, end)
+	`, table), exchange, product, start, end)
 	if err != nil {
 		return nil, fmt.Errorf("load candles: %w", err)
 	}

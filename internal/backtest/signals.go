@@ -153,6 +153,44 @@ func BollingerBands(period int, numStdDev float64) SignalFunc {
 	}
 }
 
+// SMACross generates buy/sell signals when price crosses a simple moving average.
+// Buys when price crosses above the SMA, sells when it crosses below.
+func SMACross(period int) SignalFunc {
+	return func(candles []Candle) []SignalValue {
+		n := len(candles)
+		out := make([]SignalValue, n)
+		if n < period+1 {
+			return out
+		}
+
+		// Compute running SMA
+		sma := make([]float64, n)
+		var sum float64
+		for i := 0; i < period; i++ {
+			sum += candles[i].Close
+		}
+		sma[period-1] = sum / float64(period)
+		for i := period; i < n; i++ {
+			sum += candles[i].Close - candles[i-period].Close
+			sma[i] = sum / float64(period)
+		}
+
+		for i := period; i < n; i++ {
+			prevAbove := candles[i-1].Close > sma[i-1]
+			currAbove := candles[i].Close > sma[i]
+			switch {
+			case !prevAbove && currAbove:
+				out[i] = Buy
+			case prevAbove && !currAbove:
+				out[i] = Sell
+			default:
+				out[i] = Neutral
+			}
+		}
+		return out
+	}
+}
+
 // EMACross generates buy/sell signals from a fast/slow EMA crossover.
 func EMACross(fast, slow int) SignalFunc {
 	return func(candles []Candle) []SignalValue {
@@ -225,6 +263,67 @@ func VolatilityFilter(base SignalFunc, period int, minVolatility float64) Signal
 	}
 }
 
+// Regime represents the detected market regime for a candle.
+type Regime int
+
+const (
+	RegimeNeutral Regime = 0
+	RegimeBull    Regime = 1
+	RegimeBear    Regime = -1
+)
+
+// DetectRegime classifies each candle into a market regime.
+//   - Bull: price above slowSMA AND fastSMA above slowSMA (golden cross)
+//   - Bear: price below slowSMA AND fastSMA below slowSMA (death cross)
+//   - Neutral: everything else (choppy/transitional)
+func DetectRegime(candles []Candle, fastPeriod, slowPeriod int) []Regime {
+	n := len(candles)
+	out := make([]Regime, n)
+	if n < slowPeriod+1 {
+		return out
+	}
+
+	closes := make([]float64, n)
+	for i, c := range candles {
+		closes[i] = c.Close
+	}
+
+	fastSMA := sma(closes, fastPeriod)
+	slowSMA := sma(closes, slowPeriod)
+
+	for i := slowPeriod; i < n; i++ {
+		price := closes[i]
+		switch {
+		case price > slowSMA[i] && fastSMA[i] > slowSMA[i]:
+			out[i] = RegimeBull
+		case price < slowSMA[i] && fastSMA[i] < slowSMA[i]:
+			out[i] = RegimeBear
+		default:
+			out[i] = RegimeNeutral
+		}
+	}
+	return out
+}
+
+// sma computes a simple moving average series.
+func sma(values []float64, period int) []float64 {
+	n := len(values)
+	out := make([]float64, n)
+	if period <= 0 || n < period {
+		return out
+	}
+	var sum float64
+	for i := 0; i < period; i++ {
+		sum += values[i]
+	}
+	out[period-1] = sum / float64(period)
+	for i := period; i < n; i++ {
+		sum += values[i] - values[i-period]
+		out[i] = sum / float64(period)
+	}
+	return out
+}
+
 // AllSignals returns a map of all built-in signals with default parameters.
 func AllSignals() map[string]SignalFunc {
 	return map[string]SignalFunc{
@@ -232,6 +331,7 @@ func AllSignals() map[string]SignalFunc {
 		"macd":      MACD(12, 26, 9),
 		"bbands":    BollingerBands(20, 2.0),
 		"ema_cross": EMACross(9, 21),
+		"sma":       SMACross(200),
 	}
 }
 
