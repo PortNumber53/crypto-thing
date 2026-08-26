@@ -105,9 +105,9 @@ func (c *Client) GetCandlesOnce(ctx context.Context, productID string, start, en
 func (c *Client) GetProducts(ctx context.Context) ([]Product, error) {
 	path := "/api/v3/brokerage/market/products"
 	q := url.Values{}
-	// The /products endpoint does not support pagination. To get all products,
-	// we must set a limit high enough to retrieve them in a single call.
-	q.Set("limit", "9999")
+	// Coinbase currently caps public product requests at 1000. The response's
+	// num_products field indicates the total returned by this endpoint.
+	q.Set("limit", "1000")
 
 	resp, err := c.doPublic(ctx, http.MethodGet, path, q, "")
 	if err != nil {

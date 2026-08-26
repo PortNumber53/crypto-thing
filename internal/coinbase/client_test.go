@@ -1,6 +1,7 @@
 package coinbase
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/ed25519"
 	"crypto/elliptic"
@@ -9,9 +10,17 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return fn(request)
+}
 
 func TestBearerTokenUsesCurrentCoinbaseClaims(t *testing.T) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -92,5 +101,26 @@ func TestBearerTokenSupportsCoinbaseEd25519Key(t *testing.T) {
 	}
 	if header["alg"] != "EdDSA" || header["nonce"] == "" {
 		t.Fatalf("unexpected JWT header: alg=%v nonce-present=%v", header["alg"], header["nonce"] != "")
+	}
+}
+
+func TestGetProductsUsesCoinbaseMaximumLimit(t *testing.T) {
+	client := NewClient("", "", "")
+	client.httpClient = &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if got := request.URL.Query().Get("limit"); got != "1000" {
+			t.Fatalf("limit = %q, want 1000", got)
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(strings.NewReader(`{"products":[],"num_products":0}`)),
+		}, nil
+	})}
+	products, err := client.GetProducts(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(products) != 0 {
+		t.Fatalf("products = %d, want 0", len(products))
 	}
 }
