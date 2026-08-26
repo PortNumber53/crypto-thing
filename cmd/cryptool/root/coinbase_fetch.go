@@ -101,7 +101,7 @@ This command intelligently identifies and fills any gaps in the local database. 
 			fetchRecursive = func(start, end time.Time) error {
 				// 1. Count how many gaps in this range are worth filling (i.e. not permanently skipped).
 				// This is much more efficient than counting existing candles and doing math in the app.
-				gapsToFill, err := store.CountGapsToFill(ctx, "coinbase", product, start, end, int(secPerBucket))
+				gapsToFill, err := store.CountGapsToFill(ctx, "coinbase", product, start, end, granularity)
 				if err != nil {
 					return fmt.Errorf("failed to count gaps to fill in range: %w", err)
 				}
@@ -127,7 +127,7 @@ This command intelligently identifies and fills any gaps in the local database. 
 					}
 
 					// Insert the candles we received.
-					insertedInBatch, err := store.InsertCandles(ctx, "coinbase", product, candles)
+					insertedInBatch, err := store.InsertCandles(ctx, "coinbase", product, granularity, candles)
 					if err != nil {
 						return fmt.Errorf("insert candles: %w", err)
 					}
@@ -136,7 +136,7 @@ This command intelligently identifies and fills any gaps in the local database. 
 
 					// After inserting, find out which timestamps are still missing and mark them as gaps.
 					// This is the most reliable way to identify true gaps.
-					missingTimestamps, err := store.GetMissingCandleTimestamps(ctx, "coinbase", product, start, end, int(secPerBucket))
+					missingTimestamps, err := store.GetMissingCandleTimestamps(ctx, "coinbase", product, start, end, granularity)
 					if err != nil {
 						return fmt.Errorf("failed to get missing timestamps post-fetch: %w", err)
 					}
@@ -152,7 +152,7 @@ This command intelligently identifies and fills any gaps in the local database. 
 							defer gapWg.Done()
 							for t := range gapJobs {
 								fakeCandle := []coinbase.Candle{{Time: t, Volume: -1}}
-								if _, err := store.InsertCandles(ctx, "coinbase", product, fakeCandle); err != nil {
+								if _, err := store.InsertCandles(ctx, "coinbase", product, granularity, fakeCandle); err != nil {
 									// Log error but don't block other workers
 									fmt.Printf("         -> error marking gap for %s: %v\n", t.Format(time.RFC3339), err)
 									continue

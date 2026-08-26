@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cryptool/internal/coinbase"
+	"cryptool/internal/schema"
 	"github.com/lib/pq"
 )
 
@@ -26,23 +27,26 @@ func NewStore(url string) *Store {
 // 2. LEFT JOINing this series with the `candles` table.
 // 3. Counting the timestamps that are either NOT in the candles table (NULL) or ARE in the table but have a `fake_fill_count` < 5.
 // This gives us the precise number of candles we need to fetch from the API, excluding gaps we've given up on.
-func (s *Store) CountGapsToFill(ctx context.Context, exchange, product string, start, end time.Time, granularitySec int) (int, error) {
+func (s *Store) CountGapsToFill(ctx context.Context, exchange, product string, start, end time.Time, granularity string) (int, error) {
 	db, err := sql.Open("postgres", s.url)
 	if err != nil {
 		return 0, err
 	}
 	defer db.Close()
 
+	table := schema.CandleTable(granularity)
+	granularitySec := schema.GranularitySeconds(granularity)
+
 	var cnt int
-	err = db.QueryRowContext(ctx, `
+	err = db.QueryRowContext(ctx, fmt.Sprintf(`
 		WITH expected_times AS (
 			SELECT generate_series($3::timestamptz, $4::timestamptz - interval '1 second', $5::interval) as t
 		)
 		SELECT COUNT(e.t)
 		FROM expected_times e
-		LEFT JOIN candles c ON e.t = c.time AND c.exchange = $1 AND c.product_id = $2
+		LEFT JOIN %s c ON e.t = c.time AND c.exchange = $1 AND c.product_id = $2
 		WHERE c.time IS NULL OR (c.volume = -1 AND c.fake_fill_count < 5)
-	`, exchange, product, start, end, fmt.Sprintf("%d seconds", granularitySec)).Scan(&cnt)
+	`, table), exchange, product, start, end, fmt.Sprintf("%d seconds", int(granularitySec))).Scan(&cnt)
 
 	if err != nil {
 		return 0, fmt.Errorf("counting gaps to fill: %w", err)
@@ -51,22 +55,25 @@ func (s *Store) CountGapsToFill(ctx context.Context, exchange, product string, s
 }
 
 // GetMissingCandleTimestamps returns a slice of the exact timestamps that are missing or need to be retried within a given range.
-func (s *Store) GetMissingCandleTimestamps(ctx context.Context, exchange, product string, start, end time.Time, granularitySec int) ([]time.Time, error) {
+func (s *Store) GetMissingCandleTimestamps(ctx context.Context, exchange, product string, start, end time.Time, granularity string) ([]time.Time, error) {
 	db, err := sql.Open("postgres", s.url)
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
 
-	rows, err := db.QueryContext(ctx, `
+	table := schema.CandleTable(granularity)
+	granularitySec := schema.GranularitySeconds(granularity)
+
+	rows, err := db.QueryContext(ctx, fmt.Sprintf(`
 		WITH expected_times AS (
 			SELECT generate_series($3::timestamptz, $4::timestamptz - interval '1 second', $5::interval) as t
 		)
 		SELECT e.t
 		FROM expected_times e
-		LEFT JOIN candles c ON e.t = c.time AND c.exchange = $1 AND c.product_id = $2
+		LEFT JOIN %s c ON e.t = c.time AND c.exchange = $1 AND c.product_id = $2
 		WHERE c.time IS NULL OR (c.volume = -1 AND c.fake_fill_count < 5)
-	`, exchange, product, start, end, fmt.Sprintf("%d seconds", granularitySec))
+	`, table), exchange, product, start, end, fmt.Sprintf("%d seconds", int(granularitySec)))
 
 	if err != nil {
 		return nil, fmt.Errorf("querying for missing timestamps: %w", err)
@@ -86,20 +93,22 @@ func (s *Store) GetMissingCandleTimestamps(ctx context.Context, exchange, produc
 }
 
 // CountCandlesInRange returns how many candles exist for an exchange/product in [start, end).
-func (s *Store) CountCandlesInRange(ctx context.Context, exchange, product string, start, end time.Time) (int, error) {
+func (s *Store) CountCandlesInRange(ctx context.Context, exchange, product string, start, end time.Time, granularity string) (int, error) {
 	db, err := sql.Open("postgres", s.url)
 	if err != nil {
 		return 0, err
 	}
 	defer db.Close()
 
+	table := schema.CandleTable(granularity)
+
 	var cnt int
 	// We ignore candles with volume < 0, as these are our fake candles marking gaps.
-	err = db.QueryRowContext(ctx, `
+	err = db.QueryRowContext(ctx, fmt.Sprintf(`
         SELECT COUNT(*)
-        FROM candles
+        FROM %s
         WHERE exchange = $1 AND product_id = $2 AND time >= $3 AND time < $4 AND volume >= 0
-    `, exchange, product, start, end).Scan(&cnt)
+    `, table), exchange, product, start, end).Scan(&cnt)
 	if err != nil {
 		return 0, err
 	}
@@ -107,19 +116,21 @@ func (s *Store) CountCandlesInRange(ctx context.Context, exchange, product strin
 }
 
 // GetProductNewAt returns the new_at timestamp for a given product.
-func (s *Store) GetCandleFillCount(ctx context.Context, exchange, product string, t time.Time) (int, error) {
+func (s *Store) GetCandleFillCount(ctx context.Context, exchange, product string, t time.Time, granularity string) (int, error) {
 	db, err := sql.Open("postgres", s.url)
 	if err != nil {
 		return 0, err
 	}
 	defer db.Close()
 
+	table := schema.CandleTable(granularity)
+
 	var count int
-	err = db.QueryRowContext(ctx, `
+	err = db.QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT fake_fill_count
-		FROM candles
+		FROM %s
 		WHERE exchange = $1 AND product_id = $2 AND time = $3 AND volume = -1
-	`, exchange, product, t).Scan(&count)
+	`, table), exchange, product, t).Scan(&count)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return 0, nil // No fake candle exists, so count is 0
@@ -296,22 +307,24 @@ func parseFloat(s string) float64 {
 	return f
 }
 
-func (s *Store) InsertCandles(ctx context.Context, exchange, product string, candles []coinbase.Candle) (int, error) {
+func (s *Store) InsertCandles(ctx context.Context, exchange, product, granularity string, candles []coinbase.Candle) (int, error) {
 	db, err := sql.Open("postgres", s.url)
 	if err != nil {
 		return 0, err
 	}
 	defer db.Close()
 
+	table := schema.CandleTable(granularity)
+
 	// Handle the special case for a "fake" candle, used to mark gaps.
 	if len(candles) == 1 && candles[0].Volume == -1 {
-		_, err := db.ExecContext(ctx, `
-			INSERT INTO candles (exchange, product_id, time, open, high, low, close, volume, fake_fill_count)
+		_, err := db.ExecContext(ctx, fmt.Sprintf(`
+			INSERT INTO %s (exchange, product_id, time, open, high, low, close, volume, fake_fill_count)
 			VALUES ($1, $2, $3, 0, 0, 0, 0, -1, 1)
 			ON CONFLICT (exchange, product_id, time) DO UPDATE
-			SET fake_fill_count = candles.fake_fill_count + 1
-			WHERE candles.volume = -1
-		`, exchange, product, candles[0].Time)
+			SET fake_fill_count = %s.fake_fill_count + 1
+			WHERE %s.volume = -1
+		`, table, table, table), exchange, product, candles[0].Time)
 		return 0, err // Return 0 rows affected for fake candles
 	}
 
@@ -319,10 +332,10 @@ func (s *Store) InsertCandles(ctx context.Context, exchange, product string, can
 	if err != nil {
 		return 0, err
 	}
-	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO candles(exchange, product_id, time, open, high, low, close, volume)
+	stmt, err := tx.PrepareContext(ctx, fmt.Sprintf(`
+		INSERT INTO %s(exchange, product_id, time, open, high, low, close, volume)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-		ON CONFLICT (exchange, product_id, time) DO NOTHING`)
+		ON CONFLICT (exchange, product_id, time) DO NOTHING`, table))
 	if err != nil {
 		tx.Rollback()
 		return 0, err

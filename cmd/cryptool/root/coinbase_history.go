@@ -82,7 +82,7 @@ func newCoinbaseHistoryCmd() *cobra.Command {
 
 				var fetchRecursive func(start, end time.Time) error
 				fetchRecursive = func(start, end time.Time) error {
-					gapsToFill, err := store.CountGapsToFill(ctx, "coinbase", product, start, end, int(secPerBucket))
+					gapsToFill, err := store.CountGapsToFill(ctx, "coinbase", product, start, end, granularity)
 					if err != nil {
 						return fmt.Errorf("failed to count gaps to fill in range: %w", err)
 					}
@@ -103,14 +103,14 @@ func newCoinbaseHistoryCmd() *cobra.Command {
 							return fmt.Errorf("coinbase candles batch error: %w", err)
 						}
 
-						insertedInBatch, err := store.InsertCandles(ctx, "coinbase", product, candles)
+						insertedInBatch, err := store.InsertCandles(ctx, "coinbase", product, granularity, candles)
 						if err != nil {
 							return fmt.Errorf("insert candles: %w", err)
 						}
 						fmt.Printf("         -> inserted %d of %d candles\n", insertedInBatch, len(candles))
 						totalInserted += insertedInBatch
 
-						missingTimestamps, err := store.GetMissingCandleTimestamps(ctx, "coinbase", product, start, end, int(secPerBucket))
+						missingTimestamps, err := store.GetMissingCandleTimestamps(ctx, "coinbase", product, start, end, granularity)
 						if err != nil {
 							return fmt.Errorf("failed to get missing timestamps post-fetch: %w", err)
 						}
@@ -125,7 +125,7 @@ func newCoinbaseHistoryCmd() *cobra.Command {
 								defer gapWg.Done()
 								for t := range gapJobs {
 									fakeCandle := []coinbase.Candle{{Time: t, Volume: -1}}
-									if _, err := store.InsertCandles(ctx, "coinbase", product, fakeCandle); err != nil {
+									if _, err := store.InsertCandles(ctx, "coinbase", product, granularity, fakeCandle); err != nil {
 										fmt.Printf("         -> error marking gap for %s: %v\n", t.Format(time.RFC3339), err)
 										continue
 									}
