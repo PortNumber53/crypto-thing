@@ -94,6 +94,16 @@ func (p Params) Validate() error {
 	if p.Combination == Adaptive && (len(p.BullSignals) == 0 || len(p.BearSignals) == 0) {
 		return fmt.Errorf("adaptive mode requires bull and bear signals")
 	}
+	available := AllSignals()
+	for label, signals := range map[string][]string{
+		"signals": p.Signals, "bull signals": p.BullSignals, "bear signals": p.BearSignals,
+	} {
+		for _, signal := range signals {
+			if _, ok := available[signal]; !ok {
+				return fmt.Errorf("unknown %s value %q", label, signal)
+			}
+		}
+	}
 	return nil
 }
 

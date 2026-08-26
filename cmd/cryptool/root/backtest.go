@@ -74,15 +74,6 @@ Example:
 				return err
 			}
 
-			candles, err := backtest.LoadCandles(cmd.Context(), cfg.Database.URL, "coinbase", product, granularity, start, end)
-			if err != nil {
-				return fmt.Errorf("load candles: %w", err)
-			}
-			if len(candles) == 0 {
-				return fmt.Errorf("no candles found for %s in range [%s, %s); run 'data fetch' first", product, start.Format("2006-01-02"), end.Format("2006-01-02"))
-			}
-			fmt.Printf("Loaded %d candles for %s (%s to %s)\n", len(candles), product, candles[0].Time.Format("2006-01-02"), candles[len(candles)-1].Time.Format("2006-01-02"))
-
 			sigList := parseSignalList(signals)
 
 			params := backtest.Params{
@@ -109,19 +100,14 @@ Example:
 				Capital:      capital,
 			}
 
-			result, err := backtest.Run(candles, params)
+			result, err := backtest.NewService(cfg.Database.URL).Run(cmd.Context(), backtest.RunRequest{Params: params, Save: save})
 			if err != nil {
 				return fmt.Errorf("backtest failed: %w", err)
 			}
 
 			printResult(cmd, result, showTrades)
-
-			if save {
-				if err := backtest.SaveResult(cmd.Context(), cfg.Database.URL, result); err != nil {
-					fmt.Fprintf(cmd.ErrOrStderr(), "warning: failed to save result: %v\n", err)
-				} else {
-					fmt.Fprintln(cmd.OutOrStdout(), "Result saved to database.")
-				}
+			if result.ID != 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "Result saved as #%d.\n", result.ID)
 			}
 			return nil
 		},
@@ -201,15 +187,6 @@ Example:
 				return err
 			}
 
-			candles, err := backtest.LoadCandles(cmd.Context(), cfg.Database.URL, "coinbase", product, granularity, start, end)
-			if err != nil {
-				return fmt.Errorf("load candles: %w", err)
-			}
-			if len(candles) == 0 {
-				return fmt.Errorf("no candles found for %s in range [%s, %s); run 'data fetch' first", product, start.Format("2006-01-02"), end.Format("2006-01-02"))
-			}
-			fmt.Printf("Loaded %d candles for %s (%s to %s)\n\n", len(candles), product, candles[0].Time.Format("2006-01-02"), candles[len(candles)-1].Time.Format("2006-01-02"))
-
 			params := backtest.Params{
 				Exchange: "coinbase", ProductID: product, Granularity: granularity,
 				Start: start, End: end, Combination: backtest.CombinationMethod(combination),
@@ -219,7 +196,10 @@ Example:
 				RRMin: rrMin, MaxLoss: maxLoss, ProfitGate: profitGate,
 				PositionSize: positionSize, Capital: capital,
 			}
-			results, err := backtest.RunCombinations(candles, params, topN)
+			results, err := backtest.NewService(cfg.Database.URL).RunCombinations(cmd.Context(), backtest.CombinationRequest{
+				RunRequest: backtest.RunRequest{Params: params, Save: save},
+				Top:        topN,
+			})
 			if err != nil {
 				return fmt.Errorf("run combinations: %w", err)
 			}
@@ -240,15 +220,7 @@ Example:
 			}
 
 			if save {
-				saved := 0
-				for _, result := range results {
-					if err := backtest.SaveResult(cmd.Context(), cfg.Database.URL, result); err != nil {
-						fmt.Fprintf(cmd.ErrOrStderr(), "warning: save %s: %v\n", result.Signals, err)
-					} else {
-						saved++
-					}
-				}
-				fmt.Printf("\nSaved %d results to database.\n", saved)
+				fmt.Printf("\nSaved %d results to database.\n", len(results))
 			}
 			return nil
 		},

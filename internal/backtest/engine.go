@@ -68,6 +68,8 @@ type EquityPoint struct {
 
 // Result holds the final performance metrics for a backtest run.
 type Result struct {
+	ID           int64
+	StrategyID   *int64
 	Exchange     string
 	ProductID    string
 	Granularity  string
@@ -99,6 +101,7 @@ type Result struct {
 	NumTrades   int
 	Trades      []Trade
 	EquityCurve []EquityPoint
+	CreatedAt   time.Time
 }
 
 // position tracks an open trade.
