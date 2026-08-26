@@ -2,6 +2,7 @@ package coinbase
 
 import (
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
@@ -61,5 +62,35 @@ func TestBearerTokenUsesCurrentCoinbaseClaims(t *testing.T) {
 	}
 	if claims["uri"] != "GET api.coinbase.com/api/v3/brokerage/accounts" {
 		t.Fatalf("uri = %v", claims["uri"])
+	}
+}
+
+func TestBearerTokenSupportsCoinbaseEd25519Key(t *testing.T) {
+	_, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := NewClientWithJWT("organizations/test/apiKeys/ed25519", base64.StdEncoding.EncodeToString(privateKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := client.bearerToken("GET", "/api/v3/brokerage/accounts")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("JWT has %d parts, want 3", len(parts))
+	}
+	headerJSON, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var header map[string]any
+	if err := json.Unmarshal(headerJSON, &header); err != nil {
+		t.Fatal(err)
+	}
+	if header["alg"] != "EdDSA" || header["nonce"] == "" {
+		t.Fatalf("unexpected JWT header: alg=%v nonce-present=%v", header["alg"], header["nonce"] != "")
 	}
 }

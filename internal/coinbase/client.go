@@ -3,6 +3,7 @@ package coinbase
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -35,7 +36,8 @@ type Client struct {
 	passphrase    string
 	httpClient    *http.Client
 	jwtKeyName    string
-	jwtPrivateKey *ecdsa.PrivateKey
+	jwtPrivateKey any
+	jwtAlgorithm  jose.SignatureAlgorithm
 	verbose       bool
 	// rate limiting and retry
 	rpm         int
@@ -289,22 +291,53 @@ func NewClient(apiKey, apiSecret, passphrase string) *Client {
 
 // NewClientWithJWT creates a client that uses JWT bearer tokens.
 // keyName is the COINBASE_API_KEY_NAME (e.g., organizations/.../apiKeys/...).
-// privateKeyPEM is the EC private key in PEM format. It may contain literal \n sequences; they will be converted.
-func NewClientWithJWT(keyName, privateKeyPEM string) (*Client, error) {
-	if privateKeyPEM == "" || keyName == "" {
+// privateKey accepts Coinbase's P-256 PEM and base64 Ed25519 formats. PEM
+// values may contain literal \n sequences; they will be converted.
+func NewClientWithJWT(keyName, privateKey string) (*Client, error) {
+	if privateKey == "" || keyName == "" {
 		return &Client{httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
 	}
-	// Normalize escaped newlines
-	normalized := strings.ReplaceAll(privateKeyPEM, "\\n", "\n")
-	block, _ := pem.Decode([]byte(normalized))
-	if block == nil {
-		return nil, fmt.Errorf("invalid EC private key PEM")
+	normalized := strings.TrimSpace(strings.ReplaceAll(privateKey, "\\n", "\n"))
+	if strings.HasPrefix(normalized, "-----BEGIN") {
+		block, _ := pem.Decode([]byte(normalized))
+		if block == nil {
+			return nil, fmt.Errorf("invalid private key PEM")
+		}
+		if block.Type == "EC PRIVATE KEY" {
+			pk, err := x509.ParseECPrivateKey(block.Bytes)
+			if err != nil {
+				return nil, fmt.Errorf("parse EC private key: %w", err)
+			}
+			return &Client{jwtKeyName: keyName, jwtPrivateKey: pk, jwtAlgorithm: jose.ES256, httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
+		}
+		parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("parse PKCS#8 private key: %w", err)
+		}
+		switch pk := parsed.(type) {
+		case *ecdsa.PrivateKey:
+			return &Client{jwtKeyName: keyName, jwtPrivateKey: pk, jwtAlgorithm: jose.ES256, httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
+		case ed25519.PrivateKey:
+			return &Client{jwtKeyName: keyName, jwtPrivateKey: pk, jwtAlgorithm: jose.EdDSA, httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
+		default:
+			return nil, fmt.Errorf("unsupported private key type %T", parsed)
+		}
 	}
-	pk, err := x509.ParseECPrivateKey(block.Bytes)
+
+	raw, err := base64.StdEncoding.DecodeString(strings.Join(strings.Fields(normalized), ""))
 	if err != nil {
-		return nil, fmt.Errorf("parse EC private key: %w", err)
+		return nil, fmt.Errorf("private key is neither PEM nor base64: %w", err)
 	}
-	return &Client{jwtKeyName: keyName, jwtPrivateKey: pk, httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
+	var pk ed25519.PrivateKey
+	switch len(raw) {
+	case ed25519.SeedSize:
+		pk = ed25519.NewKeyFromSeed(raw)
+	case ed25519.PrivateKeySize:
+		pk = ed25519.PrivateKey(raw)
+	default:
+		return nil, fmt.Errorf("Ed25519 key must decode to %d or %d bytes, got %d", ed25519.SeedSize, ed25519.PrivateKeySize, len(raw))
+	}
+	return &Client{jwtKeyName: keyName, jwtPrivateKey: pk, jwtAlgorithm: jose.EdDSA, httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
 }
 
 // APIKeyClaims defines the custom claims for Coinbase JWT.
@@ -332,7 +365,7 @@ func (c *Client) bearerToken(method, path string) (string, error) {
 	}
 
 	signer, err := jose.NewSigner(
-		jose.SigningKey{Algorithm: jose.ES256, Key: c.jwtPrivateKey},
+		jose.SigningKey{Algorithm: c.jwtAlgorithm, Key: c.jwtPrivateKey},
 		(&jose.SignerOptions{NonceSource: nonceSource{}}).WithType("JWT").WithHeader("kid", c.jwtKeyName),
 	)
 	if err != nil {
