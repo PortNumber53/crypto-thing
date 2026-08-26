@@ -1,0 +1,16 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowRight, FlaskConical, Plus, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { api } from '@/lib/api'
+import { fmtDate, fmtPct } from '@/lib/utils'
+import { Empty, Loading, PageHeader, Panel, primaryButton } from '@/components/UI'
+
+export default function Backtests() {
+  const qc = useQueryClient()
+  const query = useQuery({ queryKey: ['backtests', '', 100], queryFn: () => api.backtests('', 100) })
+  const remove = useMutation({ mutationFn: api.deleteBacktest, onSuccess: () => qc.invalidateQueries({ queryKey: ['backtests'] }) })
+  return <div className="space-y-6">
+    <PageHeader eyebrow="Evidence library" title="Backtests" description="Every saved run, with enough context to reproduce the result and challenge its assumptions." actions={<Link className={primaryButton} to="/backtests/new"><Plus size={15} />Run backtest</Link>} />
+    {query.isLoading ? <Loading label="Loading backtests" /> : !query.data?.length ? <Empty title="No saved backtests" body="Run a single configuration or sweep signal combinations to build your evidence library." action={<Link className={primaryButton} to="/backtests/new"><FlaskConical size={15} />Start testing</Link>} /> : <Panel className="overflow-hidden"><div className="overflow-x-auto"><table className="w-full min-w-[850px] text-sm"><thead><tr className="border-b border-slate-800">{['Market','Configuration','Return','Sharpe','Drawdown','Win rate','Trades','Created',''].map((h, i) => <th key={h} className={`px-4 py-3 text-xs font-medium uppercase tracking-wider text-slate-500 ${i < 2 ? 'text-left' : 'text-right'}`}>{h}</th>)}</tr></thead><tbody>{query.data.map(r => <tr key={r.id} className="border-b border-slate-800/70 last:border-0 hover:bg-slate-800/25"><td className="px-4 py-4"><p className="font-medium text-slate-200">{r.product_id}</p><p className="text-xs text-slate-600">{r.granularity}</p></td><td className="max-w-xs px-4 py-4"><p className="truncate text-slate-300">{r.signals || `${r.bull_signals} / ${r.bear_signals}`}</p><p className="mt-1 text-xs capitalize text-slate-600">{r.combination}</p></td><td className={`px-4 py-4 text-right font-semibold ${r.total_return >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{fmtPct(r.total_return)}</td><td className="px-4 py-4 text-right tabular-nums text-slate-300">{r.sharpe.toFixed(2)}</td><td className="px-4 py-4 text-right tabular-nums text-rose-300">{fmtPct(r.max_drawdown)}</td><td className="px-4 py-4 text-right tabular-nums text-slate-300">{fmtPct(r.win_rate)}</td><td className="px-4 py-4 text-right text-slate-400">{r.num_trades}</td><td className="px-4 py-4 text-right text-xs text-slate-500">{fmtDate(r.created_at)}</td><td className="px-4 py-4"><div className="flex justify-end gap-1"><button aria-label="Delete" onClick={() => remove.mutate(r.id)} className="rounded-lg p-2 text-slate-600 hover:bg-rose-500/10 hover:text-rose-400"><Trash2 size={14} /></button><Link aria-label="View report" to={`/backtests/${r.id}`} className="rounded-lg p-2 text-slate-500 hover:bg-cyan-500/10 hover:text-cyan-400"><ArrowRight size={15} /></Link></div></td></tr>)}</tbody></table></div></Panel>}
+  </div>
+}

@@ -19,6 +19,8 @@ export interface Stats {
   candles: number
   backtests: number
   strategies: number
+  best_backtest: BacktestResult | null
+  recent_backtests: BacktestResult[]
 }
 
 export interface Product {
@@ -53,13 +55,18 @@ export interface SignalInfo {
 }
 
 export interface BacktestResult {
-  id?: number
+  id: number
+  strategy_id: number | null
   exchange: string
   product_id: string
   granularity: string
   start_time: string
   end_time: string
   signals: string
+  bull_signals: string
+  bear_signals: string
+  regime_fast: number
+  regime_slow: number
   combination: string
   threshold: number
   fee_rate: number
@@ -67,6 +74,10 @@ export interface BacktestResult {
   tax_rate: number
   min_edge: number
   rr_min: number
+  max_loss: number
+  profit_gate: boolean
+  position_size: number
+  capital: number
   total_return: number
   sharpe: number
   sortino: number
@@ -75,6 +86,19 @@ export interface BacktestResult {
   win_rate: number
   num_trades: number
   created_at: string
+  equity_curve?: EquityPoint[]
+  trades?: BacktestTrade[]
+}
+
+export interface EquityPoint { time: string; equity: number; price: number }
+export interface BacktestTrade {
+  entry_time: string
+  exit_time: string
+  direction: 'long' | 'short'
+  entry_price: number
+  exit_price: number
+  net_return: number
+  profit: boolean
 }
 
 export interface Strategy {
@@ -82,13 +106,21 @@ export interface Strategy {
   name: string
   description: string
   signals: string
+  bull_signals: string
+  bear_signals: string
   combination: string
+  regime_fast: number
+  regime_slow: number
   threshold: number
   fee_rate: number
   slippage: number
   tax_rate: number
   min_edge: number
   rr_min: number
+  max_loss: number
+  profit_gate: boolean
+  position_size: number
+  capital: number
   created_at: string
   updated_at: string
 }
@@ -100,14 +132,23 @@ export interface RunBacktestRequest {
   start: string
   end: string
   signals: string[]
+  bull_signals?: string[]
+  bear_signals?: string[]
   combination: string
+  regime_fast?: number
+  regime_slow?: number
   threshold: number
   fee_rate: number
   slippage: number
   tax_rate: number
   min_edge: number
   rr_min: number
+  max_loss?: number
+  profit_gate?: boolean
+  position_size?: number
+  capital?: number
   save: boolean
+  top?: number
 }
 
 export interface RunStrategyRequest {
@@ -123,13 +164,21 @@ export interface StrategyInput {
   name: string
   description: string
   signals: string
+  bull_signals?: string
+  bear_signals?: string
   combination: string
+  regime_fast?: number
+  regime_slow?: number
   threshold: number
   fee_rate: number
   slippage: number
   tax_rate: number
   min_edge: number
   rr_min: number
+  max_loss?: number
+  profit_gate?: boolean
+  position_size?: number
+  capital?: number
 }
 
 // ─── API calls ───────────────────────────────────────────────────────────────
@@ -147,14 +196,20 @@ export const api = {
 
   signals: () => req<SignalInfo[]>('/api/signals'),
 
-  backtests: (product = '', limit = 50) =>
-    req<BacktestResult[]>(`/api/backtest/results?product=${product}&limit=${limit}`),
+  backtests: (product = '', limit = 50, strategyId?: number) => {
+    const query = new URLSearchParams({ product, limit: String(limit) })
+    if (strategyId != null) query.set('strategy_id', String(strategyId))
+    return req<BacktestResult[]>(`/api/backtest/results?${query}`)
+  },
   getBacktest: (id: number) => req<BacktestResult>(`/api/backtest/results/${id}`),
   deleteBacktest: (id: number) => req<{ deleted: boolean }>(`/api/backtest/results/${id}`, { method: 'DELETE' }),
   runBacktest: (body: RunBacktestRequest) =>
     req<BacktestResult>('/api/backtest/run', { method: 'POST', body: JSON.stringify(body) }),
+  runCombinations: (body: RunBacktestRequest) =>
+    req<BacktestResult[]>('/api/backtest/combo', { method: 'POST', body: JSON.stringify(body) }),
 
   strategies: () => req<Strategy[]>('/api/strategies'),
+  strategy: (id: number) => req<Strategy>(`/api/strategies/${id}`),
   createStrategy: (body: StrategyInput) =>
     req<Strategy>('/api/strategies', { method: 'POST', body: JSON.stringify(body) }),
   updateStrategy: (id: number, body: StrategyInput) =>

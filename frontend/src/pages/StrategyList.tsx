@@ -1,0 +1,12 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { ArrowRight, BookOpen, Plus, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { api } from '@/lib/api'
+import { Empty, Loading, PageHeader, Panel, primaryButton } from '@/components/UI'
+
+export default function StrategyList() {
+  const qc = useQueryClient()
+  const query = useQuery({ queryKey: ['strategies'], queryFn: api.strategies })
+  const remove = useMutation({ mutationFn: api.deleteStrategy, onSuccess: () => qc.invalidateQueries({ queryKey: ['strategies'] }) })
+  return <div className="space-y-6"><PageHeader eyebrow="Reusable research" title="Strategies" description="Save a complete engine configuration once, then run it consistently across markets and date ranges." actions={<Link className={primaryButton} to="/strategies/new"><Plus size={15} />New strategy</Link>} />{query.isLoading ? <Loading /> : !query.data?.length ? <Empty title="No strategies yet" body="Create a reusable signal and risk configuration for repeatable experiments." action={<Link className={primaryButton} to="/strategies/new"><BookOpen size={15} />Create strategy</Link>} /> : <div className="grid gap-4 lg:grid-cols-2">{query.data.map(s => <Panel key={s.id} className="p-5"><div className="flex items-start justify-between gap-4"><div><Link to={`/strategies/${s.id}`} className="font-medium text-white hover:text-cyan-300">{s.name}</Link><p className="mt-1 line-clamp-2 text-sm text-slate-500">{s.description || 'No description'}</p></div><button aria-label="Delete strategy" onClick={() => remove.mutate(s.id)} className="rounded-lg p-2 text-slate-600 hover:bg-rose-500/10 hover:text-rose-400"><Trash2 size={14} /></button></div><div className="mt-5 flex flex-wrap gap-2">{(s.combination === 'adaptive' ? `${s.bull_signals},${s.bear_signals}` : s.signals).split(',').filter(Boolean).map(sig => <span key={sig} className="rounded-md bg-cyan-500/10 px-2 py-1 text-[10px] uppercase text-cyan-400">{sig}</span>)}<span className="rounded-md bg-slate-800 px-2 py-1 text-[10px] uppercase text-slate-400">{s.combination}</span></div><div className="mt-5 flex items-center justify-between border-t border-slate-800 pt-4 text-xs text-slate-500"><span>Fee {(s.fee_rate*100).toFixed(2)}% · R/R {s.rr_min}</span><Link className="flex items-center gap-1 text-cyan-400" to={`/strategies/${s.id}`}>Open <ArrowRight size={13} /></Link></div></Panel>)}</div>}</div>
+}
